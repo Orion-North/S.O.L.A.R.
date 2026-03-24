@@ -44,10 +44,10 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 - [ ] Autonomous Navigation (RL Stretch Goal)
 
 ## Nested Objectives (For STEM Program Deliverables)
-- [ ] Build Functioning Quadruped Prototype With No Solar Power (By End Of Alpha Phase)
+- [ ] Build Functioning Quadruped Prototype With No Solar Power (By End Of Capstone Alpha Project)
 - [ ] Charge The Battery Any Amount With Solar Pannels Mounted On The Robot
-- [ ] Program The Robot To Charge And Move So It Can Sustain Itself In Sunny Areas
-- [ ] Program The Robot With RL/CV To Locate Sunny Areas And Budget Energy Until They Are Found
+- [ ] Program The Robot To Charge And Move So It Can Sustain Itself In Sunny Areas (By End Of Capstone Beta Project)
+- [ ] Program The Robot With RL/CV To Locate Sunny Areas And Budget Energy Until They Are Found (Stretch Goal)
 
 ---
 *Developed as a Capstone STEM Project.*
