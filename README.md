@@ -30,7 +30,7 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 ---
 
 ## Repository Structure
-* `/firmware`: ESP32 source code (Inverse Kinematics & UDP Comms).
+* `/firmware`: ESP32 code (Inverse Kinematics & UDP Comms).
 * `/scripts`: Python-based RL inference and GPU-side processing.
 * `/simulation`: URDF models and virtual training environments.
 * `/docs`: System schematics and power-cycle logic.
