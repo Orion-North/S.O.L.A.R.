@@ -37,10 +37,17 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 
 ## Development Roadmap
 - [x] Hardware Procurement
-- [ ] Inverse Kinematics (IK) Implementation
-- [ ] WiFi/UDP Telemetry Bridge (ESP32 to RTX 5080)
+- [ ] Build The Robot
+- [ ] Program Simple Movement
+- [ ] ESP32 to RTX 5080 Bridge Over Wifi
 - [ ] Solar Charge/Sleep Logic Integration
 - [ ] Autonomous Navigation (RL Stretch Goal)
+
+## Nested Objectives (For STEM Program Deliverables)
+- [ ] Build Functioning Quadruped Prototype With No Solar Power (By End Of Alpha Phase)
+- [ ] Charge The Battery Any Amount With Solar Pannels Mounted On The Robot
+- [ ] Program The Robot To Charge And Move So It Can Sustain Itself In Sunny Areas
+- [ ] Program The Robot With RL/CV To Locate Sunny Areas And Budget Energy Until They Are Found
 
 ---
 *Developed as a Capstone STEM Project.*
