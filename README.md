@@ -4,7 +4,7 @@
 
 ---
 
-## 🏗 Planned System Architecture
+## Planned System Architecture
 The robot utilizes a **Distributed Compute Model** to balance power efficiency with high-performance processing:
 * **Edge (ESP32-CAM):** Manages real-time gait execution, IMU stabilization, and low-latency video streaming.
 * **Host (PC / RTX 5080):** Receives telemetry and vision data over Wi-Fi to run complex RL locomotion policies, returning motor commands to the Edge.
