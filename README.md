@@ -14,7 +14,7 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 ## Hardware Stack
 
 ### Power & Energy
-* **Solar Array:** 3 5V 1W Monocrystalline Solar Panels.
+* **Solar Array:** 2 5V 1W Monocrystalline Solar Panels.
 * **Management:** Solar LiPo Charger + 5V 5A BEC (Step-Down) for high-current servo stabilization.
 * **Storage:** 7.4V 2S High-Discharge LiPo.
 
