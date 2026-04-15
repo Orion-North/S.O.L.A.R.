@@ -1,5 +1,5 @@
 # S.O.L.A.R. (Self-Operating Legged Autonomous Robot)
-
+<img width="1920" height="1080" alt="solar" src="https://github.com/user-attachments/assets/05dcadb7-5c9f-4229-860c-bed806fdc94c" />
 **S.O.L.A.R.** is a quadruped platform engineered for long-term autonomy. The project explores the synergy between on-board solar energy harvesting and off-board high-performance Reinforcement Learning (RL) inference.
 
 ---
