@@ -1,0 +1,18 @@
+{
+  "name": "S.O.L.A.R. Remote",
+  "short_name": "SOLAR",
+  "description": "Consumer remote control app for the S.O.L.A.R. robot.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

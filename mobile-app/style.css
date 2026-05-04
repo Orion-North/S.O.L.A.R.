@@ -1,0 +1,314 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1020;
+  --panel: #151b2e;
+  --panel-strong: #1f293f;
+  --text: #f8fafc;
+  --muted: #9aa7bd;
+  --line: rgba(255, 255, 255, 0.1);
+  --action: #31d0aa;
+  --action-dark: #133a35;
+  --danger: #ff4d5e;
+  --warn: #ffc857;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(49, 208, 170, 0.14), transparent 34rem),
+    radial-gradient(circle at 100% 10%, rgba(255, 200, 87, 0.1), transparent 28rem),
+    var(--bg);
+  color: var(--text);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.app-shell {
+  width: min(480px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.app-header,
+.quick-row,
+.telemetry-panel,
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--action);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+}
+
+.hero-panel {
+  position: relative;
+  min-height: 260px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #05070d;
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+}
+
+#camera-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.feed-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.status-pill {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, 0.82);
+  border: 1px solid var(--line);
+  color: var(--warn);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.status-pill.online {
+  color: var(--action);
+}
+
+.primary-action,
+.danger-action,
+.actions-grid button,
+.drive-btn,
+.drive-stop {
+  min-height: 54px;
+  border-radius: 18px;
+  font-weight: 800;
+}
+
+.primary-action {
+  flex: 1;
+  background: var(--action);
+  color: #06120f;
+}
+
+.danger-action {
+  flex: 1;
+  background: rgba(255, 77, 94, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 77, 94, 0.45);
+}
+
+.drive-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, 72px);
+  gap: 10px;
+  padding: 12px;
+  border-radius: 24px;
+  background: rgba(21, 27, 46, 0.86);
+  border: 1px solid var(--line);
+}
+
+.drive-btn,
+.drive-stop {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  user-select: none;
+  touch-action: none;
+}
+
+.drive-btn.active {
+  background: var(--action-dark);
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.drive-stop {
+  grid-column: 2;
+  grid-row: 2;
+  background: #283248;
+}
+
+.up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.down {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.speed-panel,
+.telemetry-panel {
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(21, 27, 46, 0.8);
+  border: 1px solid var(--line);
+}
+
+.speed-panel label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--action);
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.actions-grid button {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+}
+
+.telemetry-panel div {
+  flex: 1;
+  min-width: 0;
+}
+
+.telemetry-panel span,
+.telemetry-panel strong {
+  display: block;
+}
+
+.telemetry-panel span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.telemetry-panel strong {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-sheet {
+  width: min(440px, calc(100% - 24px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.settings-sheet::backdrop {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.settings-sheet form {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-sheet label {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.settings-sheet input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text);
+}
+
+@media (min-width: 720px) {
+  .app-shell {
+    width: min(960px, 100%);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    grid-template-rows: auto auto auto auto;
+  }
+
+  .app-header,
+  .quick-row,
+  .telemetry-panel {
+    grid-column: 1 / -1;
+  }
+
+  .hero-panel {
+    min-height: 460px;
+  }
+}

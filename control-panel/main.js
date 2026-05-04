@@ -1,7 +1,10 @@
-// S.O.L.A.R. TACTICAL TERMINAL JavaScript
+// S.O.L.A.R. TACTICAL TERMINAL JavaScript - Refactored for ESP32 Gait Generation
 
 document.addEventListener('DOMContentLoaded', () => {
   const ipInput = document.getElementById('ip-input');
+  const tokenInput = document.getElementById('token-input');
+  let apiToken = localStorage.getItem('solar_api_token') || '';
+  if(tokenInput) tokenInput.value = apiToken;
   
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach(btn => {
@@ -23,23 +26,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const spoofedAngle = 90 + newVal - originalVal;
     clearTimeout(tuneTimeout);
     tuneTimeout = setTimeout(async () => {
-        try { await fetch(`http://${target}/test?motor=${motorId}&angle=${spoofedAngle.toFixed(1)}`); } catch(e) {}
+        try { await fetchRobot('/test', { motor: motorId, angle: spoofedAngle.toFixed(1) }); } catch(e) {}
     }, 40);
   }
+
   const applyBtn = document.getElementById('apply-ip');
   const camStream = document.getElementById('cam-stream');
   const pingBtn = document.getElementById('btn-ping');
   const flashBtn = document.getElementById('btn-flash');
+  const liveFeedBtn = document.getElementById('btn-live-feed');
+  const estopBtn = document.getElementById('btn-estop');
   const targetIpText = document.querySelector('.target-ip-text');
   const statusBlock = document.querySelector('.block');
   const terminalOut = document.getElementById('terminal-out');
+  const telemetryOut = document.getElementById('telemetry-out');
   const sysTime = document.getElementById('sys-time');
   const calibContainer = document.getElementById('calib-container');
   const saveCalibBtn = document.getElementById('btn-save-calib');
 
+  function buildRobotUrl(path, params = {}, targetOverride = null) {
+    const target = (targetOverride || ipInput.value).trim();
+    if(!target) return null;
+    const base = /^https?:\/\//i.test(target) ? target.replace(/\/+$/, '') : `http://${target}`;
+    const query = new URLSearchParams(params);
+    if(apiToken) query.set('token', apiToken);
+    const qs = query.toString();
+    return `${base}${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  async function fetchRobot(path, params = {}, options = {}) {
+    const url = buildRobotUrl(path, params);
+    if(!url) throw new Error('Missing target');
+    return fetch(url, options);
+  }
+
   function logTerminal(msg) {
     const time = new Date().toLocaleTimeString('en-US', {hour12:false});
-    terminalOut.innerHTML += `> [${time}] ${msg}<br>`;
+    const row = document.createElement('div');
+    row.textContent = `> [${time}] ${msg}`;
+    terminalOut.appendChild(row);
     terminalOut.scrollTop = terminalOut.scrollHeight;
   }
 
@@ -47,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
     sysTime.innerText = new Date().toLocaleTimeString('en-US', {hour12:false});
   }, 1000);
 
-  // Load from local storage if previously saved
   const savedIP = localStorage.getItem('solar_target_ip');
   if(savedIP) {
     ipInput.value = savedIP;
@@ -64,14 +88,13 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch(`http://${ip}/ping`, { signal: controller.signal });
+      const res = await fetch(buildRobotUrl('/ping', {}, ip), { signal: controller.signal });
       clearTimeout(timeoutId);
       
       if(res.ok) {
         logTerminal("LINK ESTABLISHED. READY FOR CAPTURE...");
         targetIpText.innerText = `NODE: [${ip}]`;
         statusBlock.classList.remove('offline');
-        
         loadCalibrationData(ip);
       } else {
         throw new Error('Bad Status');
@@ -84,6 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   applyBtn.addEventListener('click', () => {
     const ip = ipInput.value.trim();
+    apiToken = tokenInput ? tokenInput.value.trim() : apiToken;
+    localStorage.setItem('solar_api_token', apiToken);
     if(ip) {
       localStorage.setItem('solar_target_ip', ip);
       updateTargets(ip);
@@ -101,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      await fetch(`http://${target}/ping`, { signal: controller.signal });
+      await fetchRobot('/ping', {}, { signal: controller.signal });
       clearTimeout(timeoutId);
       
       const latency = Date.now() - start;
@@ -124,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      await fetch(`http://${target}/flash?state=${flashState ? 1 : 0}`, { signal: controller.signal });
+      await fetchRobot('/flash', { state: flashState ? 1 : 0 }, { signal: controller.signal });
       clearTimeout(timeoutId);
       logTerminal(`FLASH COMMAND ACKNOWLEDGED.`);
     } catch (e) {
@@ -132,24 +157,83 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle explicit network breaks if the browser detects them
+  let liveFeed = false;
+  let liveTimer = null;
+  let liveErrorLogged = false;
+
+  function setLiveFeedState(enabled) {
+    liveFeed = enabled;
+    clearTimeout(liveTimer);
+    liveFeedBtn.innerText = enabled ? '[STOP FPV]' : '[FPV LIVE]';
+    liveFeedBtn.style.backgroundColor = enabled ? 'rgba(0, 240, 255, 0.2)' : 'transparent';
+    if(enabled) requestCameraFrame();
+  }
+
+  function requestCameraFrame() {
+    const target = ipInput.value.trim();
+    if(!target) return;
+    camStream.src = buildRobotUrl('/capture', { t: Date.now() });
+  }
+
+  function scheduleLiveFrame(delayMs) {
+    if(!liveFeed) return;
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(requestCameraFrame, delayMs);
+  }
+
+  camStream.addEventListener('load', () => {
+    statusBlock.classList.remove('offline');
+    const target = ipInput.value.trim();
+    if(target) targetIpText.innerText = `NODE: [${target}]`;
+    liveErrorLogged = false;
+    scheduleLiveFrame(120);
+  });
+
   camStream.addEventListener('error', async () => {
+    if(liveFeed) {
+      if(!liveErrorLogged) {
+        logTerminal("FPV FRAME DROPPED. RETRYING...");
+        liveErrorLogged = true;
+      }
+      scheduleLiveFrame(350);
+      return;
+    }
     statusBlock.classList.add('offline');
     targetIpText.innerText = `NODE: [OFFLINE]`;
     logTerminal("ERROR: SENSOR FEED LOST.");
-    
-    // Automatically fetch diagnostic logs from the ESP32
-    try {
-      const dbgRes = await fetch(`http://${ipInput.value.trim()}/debug`);
-      const dbgText = await dbgRes.text();
-      logTerminal("--- REMOTE DIAGNOSTICS ---");
-      const lines = dbgText.split('\n').filter(l => l.trim().length > 0);
-      lines.forEach(l => logTerminal(l));
-      logTerminal("--------------------------");
-    } catch(e) {
-      logTerminal("DIAGNOSTICS UNAVAILABLE.");
-    }
   });
+
+  // --- Telemetry Polling ---
+  setInterval(async () => {
+      const target = ipInput.value.trim();
+      if (!target || statusBlock.classList.contains('offline')) return;
+      try {
+          const res = await fetchRobot('/status');
+          if (res.ok) {
+              const data = await res.json();
+              telemetryOut.textContent = [
+                `> UPTIME: ${(data.uptime_ms/1000).toFixed(1)}s`,
+                `> MODE: ${String(data.mode || 'unknown').toUpperCase()}`,
+                `> NET: ${String(data.wifi_mode || 'unknown').toUpperCase()} ${data.ip ? `(${data.ip})` : ''}`,
+                `> GAIT: ${data.gait_hz} Hz`,
+                `> CAM FPS LIMIT: ${data.camera_fps_limit}`,
+                `> HEAP: ${(data.free_heap/1024).toFixed(1)} KB`,
+                `> LAST CMD: ${data.last_cmd_ms_ago} ms`,
+                `> TORQUE: ${data.torque_enabled ? 'ON' : 'OFF'}`,
+                `> E-STOP: ${data.emergency_stop ? 'ACTIVE' : 'CLEAR'}`
+              ].join('\n');
+          }
+      } catch (e) { }
+  }, 1000);
+
+  // --- Command Dispatcher ---
+  async function dispatchCmd(params) {
+      const target = ipInput.value.trim();
+      if (!target) return;
+      try {
+          await fetchRobot('/cmd', params);
+      } catch (e) { }
+  }
 
   // Calibration Logic
   let currentSettings = {};
@@ -157,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadCalibrationData(ip) {
     try {
-      const res = await fetch(`http://${ip}/settings/get`);
+      const res = await fetch(buildRobotUrl('/settings/get', {}, ip));
       currentSettings = await res.json();
       if(!currentSettings.offsets) currentSettings.offsets = new Array(16).fill(0);
       renderCalibrationUI();
@@ -210,10 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateLegOffsets(leg, setVal) {
     const setPins = [
-      [0, 1, 2],
-      [3, 4, 5],
-      [6, 7, 8],
-      [9, 10, 11]
+      [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]
     ];
     const pins = setPins[setVal - 1];
     const offCon = document.getElementById(`offsets_${leg}`);
@@ -258,22 +339,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
       ctrl.querySelector('.test-btn').addEventListener('click', () => {
-        testMotor(motorId, joint, leg);
+        const target = ipInput.value.trim();
+        if(target) fetchRobot('/test', { motor: motorId, angle: 90 });
       });
       
       offCon.appendChild(ctrl);
     });
-  }
-
-  async function testMotor(motorId, jointName, legName) {
-    const target = ipInput.value.trim();
-    if(!target) return;
-    try {
-      await fetch(`http://${target}/test?motor=${motorId}&angle=90`);
-      logTerminal(`TEST COMMAND: ${legName} ${jointName} TO CENTER.`);
-    } catch(e) {
-      logTerminal(`TEST FAILED.`);
-    }
   }
 
   saveCalibBtn.addEventListener('click', async () => {
@@ -283,21 +354,20 @@ document.addEventListener('DOMContentLoaded', () => {
     logTerminal("TRANSMITTING KINEMATICS TO NVS...");
     saveCalibBtn.innerText = '[SAVING...]';
     
-    let url = `http://${target}/settings/set?`;
+    const params = {};
     activeLegs.forEach(leg => {
       const setVal = document.getElementById(`set_${leg}`).value;
-      url += `${leg}_SET=${setVal}&`;
+      params[`${leg}_SET`] = setVal;
     });
     
-    // In our map, we just overwrite the specific channel offsets 
     for(let i=0; i<16; i++) {
         if(currentSettings.offsets[i] !== undefined) {
-            url += `o${i}=${currentSettings.offsets[i]}&`;
+            params[`o${i}`] = currentSettings.offsets[i];
         }
     }
 
     try {
-      const res = await fetch(url.slice(0, -1), { method: 'POST' });
+      const res = await fetchRobot('/settings/set', params, { method: 'POST' });
       saveCalibBtn.innerText = '[SAVE TO NVS]';
       if(res.ok) {
           logTerminal("NVS WRITE CONFIRMED.");
@@ -309,35 +379,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const testSeqBtn = document.getElementById('btn-test-sequence');
-  if(testSeqBtn) {
-    testSeqBtn.addEventListener('click', async () => {
-      const target = ipInput.value.trim();
-      if(!target) return;
-      logTerminal("INITIATING IDENTIFICATION SEQUENCE...");
-      try {
-        await fetch(`http://${target}/testseq`);
-      } catch(e) {
-        logTerminal("FAILED TO TRIGGER SEQUENCE.");
-      }
-    });
-  }
-
   const torqueBtn = document.getElementById('btn-torque');
   let torqueState = true;
+  function renderTorqueButton() {
+    if(!torqueBtn) return;
+    torqueBtn.innerText = torqueState ? '[DISABLE TORQUE]' : '[ENABLE TORQUE]';
+    torqueBtn.style.color = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
+    torqueBtn.style.borderColor = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
+    torqueBtn.style.backgroundColor = torqueState ? 'transparent' : 'var(--accent-amber)';
+  }
   if(torqueBtn) {
     torqueBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
       torqueState = !torqueState;
       logTerminal(`SERVO TORQUE: ${torqueState ? 'ENGAGED' : 'DISABLED'}`);
-      torqueBtn.innerText = torqueState ? '[DISABLE TORQUE]' : '[ENABLE TORQUE]';
-      torqueBtn.style.color = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
-      torqueBtn.style.borderColor = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
-      torqueBtn.style.backgroundColor = torqueState ? 'transparent' : 'var(--accent-amber)';
-      try {
-        await fetch(`http://${target}/torque?state=${torqueState ? 1 : 0}`);
-      } catch(e) {}
+      renderTorqueButton();
+      try { await fetchRobot('/torque', { state: torqueState ? 1 : 0 }); } catch(e) {}
     });
   }
 
@@ -353,306 +411,41 @@ document.addEventListener('DOMContentLoaded', () => {
       calibModeBtn.style.color = inCalibMode ? 'var(--bg-color)' : 'var(--accent-red)';
       calibModeBtn.style.backgroundColor = inCalibMode ? 'var(--text-main)' : 'transparent';
       calibModeBtn.style.borderColor = inCalibMode ? 'var(--text-main)' : 'var(--accent-red)';
-      try {
-        await fetch(`http://${target}/calib?state=${inCalibMode ? 1 : 0}`);
-      } catch(e) {}
+      try { await fetchRobot('/calib', { state: inCalibMode ? 1 : 0 }); } catch(e) {}
     });
   }
 
-  // --- WASD Kinematic Controls ---
-  const keys = { w: document.getElementById('key-w'), a: document.getElementById('key-a'), s: document.getElementById('key-s'), d: document.getElementById('key-d') };
-  
-  const sliderStride = document.getElementById('slider-stride');
-  const sliderLift = document.getElementById('slider-lift');
-  const sliderPace = document.getElementById('slider-pace');
-  const valStride = document.getElementById('val-stride');
-  const valLift = document.getElementById('val-lift');
-  const valPace = document.getElementById('val-pace');
-
-  sliderStride.addEventListener('input', e => valStride.innerText = e.target.value);
-  sliderLift.addEventListener('input', e => valLift.innerText = e.target.value);
-  sliderPace.addEventListener('input', e => valPace.innerText = e.target.value);
-
-  function getPhysics() {
-    return {
-      stride: parseInt(sliderStride.value),
-      lift: parseInt(sliderLift.value),
-      pace: parseInt(sliderPace.value)
-    };
+  const testSeqBtn = document.getElementById('btn-test-sequence');
+  if(testSeqBtn) {
+    testSeqBtn.addEventListener('click', async () => {
+      const target = ipInput.value.trim();
+      if(!target) return;
+      logTerminal("STARTING LEG SET IDENTIFICATION...");
+      try {
+        await fetchRobot('/testseq');
+        logTerminal("LEG SET IDENTIFICATION STARTED.");
+      } catch(e) {
+        logTerminal("LEG SET IDENTIFICATION FAILED.");
+      }
+    });
   }
 
-  const SET_PINS = [ [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11] ];
-
-  function getIdx(leg, joint) {
-      const setVal = currentSettings[`${leg}_SET`] || (leg === 'FL' ? 1 : leg === 'FR' ? 2 : leg === 'BR' ? 3 : 4);
-      const pins = SET_PINS[setVal - 1];
-      if (joint === 'HIP') return pins[0];
-      if (joint === 'KNEE') return pins[1];
-      if (joint === 'FOOT') return pins[2];
-  }
-
-  function createFrame() {
-      return new Array(16).fill(-1);
-  }
-
-  // --- DIRECT ANGULAR KINEMATICS (NO IK) ---
-  // If any joint moves the wrong way, just change its 1 to -1 or vice versa!
-  const SIGNS = {
-      FL: { H: 1, K: 1, F: 1 },
-      FR: { H: -1, K: -1, F: -1 }, // Assumes right side is physically mirrored
-      BL: { H: 1, K: 1, F: 1 },
-      BR: { H: -1, K: -1, F: -1 }
+  // --- Emotes (Now powered by ESP32) ---
+  const emotes = {
+      'btn-turtle': 'flip',
+      'btn-dance': 'dance',
+      'btn-sit': 'sit',
+      'btn-stretch': 'stretch',
+      'btn-wag': 'wag'
   };
-
-  function mapAnglesToServos(fl_a, fr_a, bl_a, br_a) {
-      let f = createFrame();
-      const setA = (leg, a) => {
-          if (!a) return;
-          f[getIdx(leg, 'HIP')] = Math.max(0, Math.min(180, a.h));
-          f[getIdx(leg, 'KNEE')] = Math.max(0, Math.min(180, a.k));
-          f[getIdx(leg, 'FOOT')] = Math.max(0, Math.min(180, a.ft));
-      };
-      setA('FL', fl_a); setA('FR', fr_a); setA('BL', bl_a); setA('BR', br_a);
-      return f;
-  }
-
-  function getLegPose(leg, swingAmp, isLifting) {
-      const S = SIGNS[leg];
-      const p = getPhysics();
-      
-      const K_LIFT = isLifting ? parseInt(p.lift) : 0;
-      const F_LIFT = isLifting ? parseInt(p.lift) : 0; 
-      
-      return {
-          h: 90 + (swingAmp * S.H),
-          k: 90 + (K_LIFT * S.K),
-          ft: 90 + (F_LIFT * S.F)
-      };
-  }
-
-  function generateGait(dir) {
-      const p = getPhysics();
-      const ST_AMP = parseInt(p.stride) / 2; // Amplitude of the hip swing
-      
-      const FWD = ST_AMP;
-      const BCK = -ST_AMP;
-
-      let sy = { FL: 0, FR: 0, BL: 0, BR: 0 }; // Swing target
-      let py = { FL: 0, FR: 0, BL: 0, BR: 0 }; // Plant target
-      
-      if (dir === 'W') {
-          sy = { FL: FWD, FR: FWD, BL: FWD, BR: FWD };
-          py = { FL: BCK, FR: BCK, BL: BCK, BR: BCK };
-      } else if (dir === 'S') {
-          sy = { FL: BCK, FR: BCK, BL: BCK, BR: BCK };
-          py = { FL: FWD, FR: FWD, BL: FWD, BR: FWD };
-      } else if (dir === 'A') { // Turn Left (Left legs reverse, Right legs forward)
-          sy = { FL: BCK, FR: FWD, BL: BCK, BR: FWD };
-          py = { FL: FWD, FR: BCK, BL: FWD, BR: BCK };
-      } else if (dir === 'D') { // Turn Right
-          sy = { FL: FWD, FR: BCK, BL: FWD, BR: BCK };
-          py = { FL: BCK, FR: FWD, BL: BCK, BR: FWD };
+  for (const [id, mode] of Object.entries(emotes)) {
+      const btn = document.getElementById(id);
+      if(btn) {
+          btn.addEventListener('click', () => {
+              logTerminal(`EMOTE: ${mode.toUpperCase()}`);
+              dispatchCmd({ mode: mode });
+          });
       }
-
-      // 2-Beat Diagonal Trot (Direct Angles)
-      
-      // Frame 1: Lift FL & BR while sweeping to target; push FR & BL back
-      let f1 = mapAnglesToServos(
-          getLegPose('FL', sy.FL, true), 
-          getLegPose('FR', py.FR, false), 
-          getLegPose('BL', py.BL, false), 
-          getLegPose('BR', sy.BR, true)
-      );
-
-      // Frame 2: Plant FL & BR
-      let f2 = mapAnglesToServos(
-          getLegPose('FL', sy.FL, false), 
-          getLegPose('FR', py.FR, false), 
-          getLegPose('BL', py.BL, false), 
-          getLegPose('BR', sy.BR, false)
-      );
-
-      // Frame 3: Lift FR & BL while sweeping to target; push FL & BR back
-      let f3 = mapAnglesToServos(
-          getLegPose('FL', py.FL, false), 
-          getLegPose('FR', sy.FR, true), 
-          getLegPose('BL', sy.BL, true), 
-          getLegPose('BR', py.BR, false)
-      );
-
-      // Frame 4: Plant FR & BL
-      let f4 = mapAnglesToServos(
-          getLegPose('FL', py.FL, false), 
-          getLegPose('FR', sy.FR, false), 
-          getLegPose('BL', sy.BL, false), 
-          getLegPose('BR', py.BR, false)
-      );
-
-      return [f1, f2, f3, f4];
-  }
-
-  let activeMovement = false;
-  let activeDir = 'IDLE';
-
-  async function processMovement() {
-    if(activeMovement) return;
-    activeMovement = true;
-
-    while(activeDir !== 'IDLE') {
-        const frames = generateGait(activeDir);
-        const p = getPhysics();
-        const target = ipInput.value.trim();
-
-        for(const frame of frames) {
-            if(activeDir === 'IDLE') break; 
-            if(target) {
-                const tStr = frame.map(v => v === -1 ? -1 : Math.round(v)).join(',');
-                try {
-                    await fetch(`http://${target}/seq?fast=1&t=${tStr}`);
-                } catch(e) {}
-            }
-            await new Promise(resolve => setTimeout(resolve, p.pace));
-        }
-    }
-    
-    activeMovement = false;
-  }
-
-  async function runTurtleFlip() {
-      if(activeMovement) return;
-      activeMovement = true;
-      const target = ipInput.value.trim();
-      logTerminal("INITIATING CUSTOM LEVER FLIP!");
-
-      const FL_H = getIdx('FL', 'HIP'), FL_K = getIdx('FL', 'KNEE'), FL_F = getIdx('FL', 'FOOT');
-      const FR_H = getIdx('FR', 'HIP'), FR_K = getIdx('FR', 'KNEE'), FR_F = getIdx('FR', 'FOOT');
-      const BL_H = getIdx('BL', 'HIP'), BL_K = getIdx('BL', 'KNEE'), BL_F = getIdx('BL', 'FOOT');
-      const BR_H = getIdx('BR', 'HIP'), BR_K = getIdx('BR', 'KNEE'), BR_F = getIdx('BR', 'FOOT');
-
-      const sendFrame = async (f, delayMs, fast) => {
-          if(!target) return;
-          const tStr = f.map(v => v === -1 ? -1 : Math.round(v)).join(',');
-          try { await fetch(`http://${target}/seq?fast=${fast ? 1 : 0}&t=${tStr}`); } catch(e){}
-          await new Promise(r => setTimeout(r, delayMs));
-      };
-
-      // Step 1: Position legs
-      let f1 = createFrame();
-      
-      // Front hips straight (90 degrees facing forward)
-      f1[FL_H] = 90;  
-      f1[FR_H] = 90; 
-      
-      // Back hips inverted out of the way
-      f1[BL_H] = 180; // Swept max back
-      f1[BR_H] = 0;   // Swept max back
-
-      // Front knees and feet straight (neutral 90)
-      f1[FL_K] = 90;  
-      f1[FR_K] = 90; 
-      f1[FL_F] = 90;  
-      f1[FR_F] = 90; 
-
-      // Back knees and feet curled out of the way
-      f1[BL_K] = 180; f1[BL_F] = 180;
-      f1[BR_K] = 0;   f1[BR_F] = 0;
-
-      await sendFrame(f1, 1500, false); // slow smooth transition
-
-      // Step 2: Push up 90 degrees with the front knees to flip over
-      let f2 = createFrame();
-      f2[FL_H] = 90;  f2[FR_H] = 90; 
-      f2[BL_H] = 180; f2[BR_H] = 0;
-      f2[FL_F] = 90;  f2[FR_F] = 90;
-      
-      // Push 90 degrees 
-      f2[FL_K] = 180; 
-      f2[FR_K] = 0;  
-      
-      await sendFrame(f2, 1000, false); // powerful push
-
-      // Step 3: Recover to neutral standing
-      let f3 = createFrame();
-      for(let i=0; i<16; i++) { f3[i] = 90; } 
-      await sendFrame(f3, 1000, true);
-
-      activeMovement = false;
-  }
-
-  const btnTurtle = document.getElementById('btn-turtle');
-  if(btnTurtle) {
-      btnTurtle.addEventListener('click', runTurtleFlip);
-  }
-
-  async function runDance() {
-      if(activeMovement) return;
-      activeMovement = true;
-      const target = ipInput.value.trim();
-      logTerminal("INITIATING DANCE SEQUENCE!");
-
-      const sendFrame = async (f, delayMs, fast=true) => {
-          if(!target) return;
-          const tStr = f.map(v => v === -1 ? -1 : Math.round(v)).join(',');
-          try { await fetch(`http://${target}/seq?fast=${fast ? 1 : 0}&t=${tStr}`); } catch(e){}
-          await new Promise(r => setTimeout(r, delayMs));
-      };
-
-      // 1. Bob up and down 3 times using explicit direct angles based on SIGNS
-      for(let i=0; i<3; i++) {
-          let squat = createFrame();
-          const squatAmt = 45;
-          ['FL','FR','BL','BR'].forEach(leg => {
-              squat[getIdx(leg, 'HIP')] = 90;
-              squat[getIdx(leg, 'KNEE')] = Math.max(0, Math.min(180, 90 + squatAmt * SIGNS[leg].K));
-              squat[getIdx(leg, 'FOOT')] = Math.max(0, Math.min(180, 90 + squatAmt * SIGNS[leg].F));
-          });
-          await sendFrame(squat, 250);
-
-          let stand = createFrame();
-          ['FL','FR','BL','BR'].forEach(leg => {
-              stand[getIdx(leg, 'HIP')] = 90;
-              stand[getIdx(leg, 'KNEE')] = 90;
-              stand[getIdx(leg, 'FOOT')] = 90;
-          });
-          await sendFrame(stand, 250);
-      }
-
-      // 2. Shake side to side by alternating Hips
-      for(let i=0; i<4; i++) {
-          let leftShift = createFrame();
-          ['FL','FR','BL','BR'].forEach(leg => {
-              let legAlt = (leg === 'FL' || leg === 'BL') ? 1 : -1;
-              leftShift[getIdx(leg, 'HIP')] = 90 + 35 * SIGNS[leg].H * legAlt;
-              leftShift[getIdx(leg, 'KNEE')] = 90;
-              leftShift[getIdx(leg, 'FOOT')] = 90;
-          });
-          await sendFrame(leftShift, 250);
-
-          let rightShift = createFrame();
-          ['FL','FR','BL','BR'].forEach(leg => {
-              let legAlt = (leg === 'FL' || leg === 'BL') ? 1 : -1;
-              rightShift[getIdx(leg, 'HIP')] = 90 - 35 * SIGNS[leg].H * legAlt; 
-              rightShift[getIdx(leg, 'KNEE')] = 90;
-              rightShift[getIdx(leg, 'FOOT')] = 90;
-          });
-          await sendFrame(rightShift, 250);
-      }
-
-      // Finish Back to Neutral Smoothly
-      let standFinal = createFrame();
-      ['FL','FR','BL','BR'].forEach(leg => {
-          standFinal[getIdx(leg, 'HIP')] = 90;
-          standFinal[getIdx(leg, 'KNEE')] = 90;
-          standFinal[getIdx(leg, 'FOOT')] = 90;
-      });
-      await sendFrame(standFinal, 500, false);
-
-      activeMovement = false;
-  }
-
-  const btnDance = document.getElementById('btn-dance');
-  if(btnDance) {
-      btnDance.addEventListener('click', runDance);
   }
 
   const btnCapture = document.getElementById('btn-capture');
@@ -661,44 +454,142 @@ document.addEventListener('DOMContentLoaded', () => {
           const target = ipInput.value.trim();
           if(!target) return;
           logTerminal("CAPTURING SENSOR FRAME...");
-          camStream.src = `http://${target}/capture?t=${new Date().getTime()}`;
+          camStream.src = buildRobotUrl('/capture', { t: Date.now() });
       });
   }
 
+  if(liveFeedBtn) {
+      liveFeedBtn.addEventListener('click', () => {
+          const target = ipInput.value.trim();
+          if(!target) return;
+          setLiveFeedState(!liveFeed);
+          logTerminal(liveFeed ? "FPV LIVE FEED STARTED." : "FPV LIVE FEED STOPPED.");
+      });
+  }
+
+  // --- WASD Kinematic Controls (ESP32 Mode) ---
+  const keys = { w: document.getElementById('key-w'), a: document.getElementById('key-a'), s: document.getElementById('key-s'), d: document.getElementById('key-d') };
+  const sliderPace = document.getElementById('slider-pace');
+  const valPace = document.getElementById('val-pace');
+
+  if(sliderPace) sliderPace.addEventListener('input', e => valPace.innerText = e.target.value);
+
+  let activeDir = 'IDLE';
+
+  async function triggerEmergencyStop() {
+    Object.values(keys).forEach(el => el.classList.remove('active'));
+    activeDir = 'IDLE';
+    runningPath = false;
+    torqueState = false;
+    renderTorqueButton();
+    logTerminal("EMERGENCY STOP TRANSMITTED.");
+    try {
+      await fetchRobot('/estop');
+      logTerminal("E-STOP ACKNOWLEDGED. TORQUE DISABLED.");
+    } catch(e) {
+      logTerminal("E-STOP TRANSMISSION FAILED.");
+    }
+  }
+
+  if(estopBtn) {
+    estopBtn.addEventListener('click', triggerEmergencyStop);
+  }
+
+  function sendDirection(keyName) {
+    const key = keyName.toLowerCase();
+    if(!keys[key] || activeDir === key.toUpperCase()) return;
+    Object.values(keys).forEach(el => el.classList.remove('active'));
+    keys[key].classList.add('active');
+    activeDir = key.toUpperCase();
+
+    let vx = 0, wz = 0;
+    if(activeDir === 'W') vx = 1;
+    if(activeDir === 'S') vx = -1;
+    if(activeDir === 'A') wz = 1;
+    if(activeDir === 'D') wz = -1;
+
+    const paceVal = parseInt(sliderPace ? sliderPace.value : 150);
+    const speed = 150.0 / paceVal;
+    dispatchCmd({ mode: 'walk', vx, vy: 0, wz, speed: speed.toFixed(2) });
+  }
+
+  function stopDirection(keyName = null) {
+    const key = keyName ? keyName.toLowerCase() : null;
+    if(key && keys[key]) keys[key].classList.remove('active');
+    const pressed = Object.keys(keys).find(keyId => keys[keyId].classList.contains('active'));
+
+    if(pressed) {
+      sendDirection(pressed);
+      return;
+    }
+
+    activeDir = 'IDLE';
+    dispatchCmd({ mode: 'stand' });
+  }
+
+  Object.entries(keys).forEach(([keyName, el]) => {
+    if(!el) return;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      sendDirection(keyName);
+    });
+    el.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      stopDirection(keyName);
+    });
+    el.addEventListener('pointercancel', () => stopDirection(keyName));
+  });
+
   document.addEventListener('keydown', (e) => {
-    if (document.activeElement === ipInput) return;
+    const activeEl = document.activeElement;
+    if(activeEl && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName)) return;
     const k = e.key.toLowerCase();
+
+    if (e.key === 'Escape' || e.key === ' ') {
+      e.preventDefault();
+      triggerEmergencyStop();
+      return;
+    }
     
-    if (k === 'f') {
-        runTurtleFlip();
-        return;
-    }
-    if (k === 'e') {
-        runDance();
-        return;
-    }
-    if (k === 'q') {
-        const btnCap = document.getElementById('btn-capture');
-        if(btnCap) btnCap.click();
-        return;
-    }
-    // Prevent multiple parallel sequences if multiple WASD exist
-    if(keys[k] && activeDir !== k.toUpperCase()) {
-      Object.values(keys).forEach(el => el.classList.remove('active'));
-      keys[k].classList.add('active');
-      activeDir = k.toUpperCase();
-      processMovement();
-    }
+    // Quick keys for emotes
+    if (k === 'f') dispatchCmd({ mode: 'flip' });
+    if (k === 'e') dispatchCmd({ mode: 'dance' });
+    if (k === 'c') dispatchCmd({ mode: 'sit' });
+    if (k === 'x') dispatchCmd({ mode: 'stretch' });
+    if (k === 'z') dispatchCmd({ mode: 'wag' });
+    if (k === 'q' && btnCapture) btnCapture.click();
+    
+    if(keys[k]) sendDirection(k);
   });
 
   document.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase();
-    if(keys[k]) {
-      keys[k].classList.remove('active');
-      const pressed = Object.keys(keys).find(key => keys[key].classList.contains('active'));
-      activeDir = pressed ? pressed.toUpperCase() : 'IDLE';
-    }
+    if(keys[k]) stopDirection(k);
   });
+
+  // Keep alive heartbeat while moving
+  setInterval(() => {
+      if(activeDir !== 'IDLE') {
+          // Send an empty ping to reset the ESP32 safety timeout
+          const target = ipInput.value.trim();
+          if(target) fetchRobot('/ping').catch(() => {});
+      }
+  }, 500);
+
+  // Alive Idle Check (If doing nothing for 3 seconds, send idle mode)
+  let idleTimer = null;
+  function resetIdleTimer() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+          if(activeDir === 'IDLE' && !inCalibMode) {
+              dispatchCmd({ mode: 'idle' });
+          }
+      }, 3000);
+  }
+  document.addEventListener('keydown', resetIdleTimer);
+  document.addEventListener('click', resetIdleTimer);
+  resetIdleTimer();
 
   // --- PATH PLANNER LOGIC ---
   const pathDurSlider = document.getElementById('path-duration-slider');
@@ -725,11 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
           row.style.border = '1px solid var(--text-main)';
           row.style.color = 'var(--text-main)';
           row.style.fontFamily = 'monospace';
-          
-          row.innerHTML = `
-              <span>${index+1}. ACT: [${item.action}]</span>
-              <span>DUR: ${item.duration}ms</span>
-          `;
+          row.innerHTML = `<span>${index+1}. ACT: [${item.action}]</span><span>DUR: ${item.duration}ms</span>`;
           qContainer.appendChild(row);
       });
   }
@@ -737,19 +624,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.path-add-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
           const action = e.target.getAttribute('data-action');
-          const dur = parseInt(pathDurSlider.value);
+          const dur = parseInt(pathDurSlider ? pathDurSlider.value : 1500);
           pathQueue.push({ action, duration: dur });
           renderPathQueue();
       });
   });
 
   const btnPathClear = document.getElementById('btn-path-clear');
-  if(btnPathClear) {
-      btnPathClear.addEventListener('click', () => {
-          pathQueue.length = 0;
-          renderPathQueue();
-      });
-  }
+  if(btnPathClear) btnPathClear.addEventListener('click', () => { pathQueue.length = 0; renderPathQueue(); });
 
   let runningPath = false;
   const btnPathRun = document.getElementById('btn-path-run');
@@ -762,38 +644,42 @@ document.addEventListener('DOMContentLoaded', () => {
           logTerminal("INITIATING AUTONOMOUS PATH SEQUENCE LOOP...");
           btnPathRun.innerText = "[RUNNING...]";
 
-          while(runningPath) { // Continuous loop until HALT
+          while(runningPath) {
               for(let i = 0; i < pathQueue.length; i++) {
                   if(!runningPath) break;
                   const item = pathQueue[i];
                   logTerminal(`PATH EXEC: ${item.action} for ${item.duration}ms`);
                   
                   if(item.action === 'F') {
-                      await runTurtleFlip();
-                      await new Promise(r => setTimeout(r, 1000)); // wait for safety
+                      dispatchCmd({ mode: 'flip' });
+                      await new Promise(r => setTimeout(r, item.duration)); 
                   } else if (item.action === 'E') {
-                      await runDance();
+                      dispatchCmd({ mode: 'dance' });
+                      await new Promise(r => setTimeout(r, item.duration)); 
                   } else if (item.action === 'WAIT') {
+                      dispatchCmd({ mode: 'stand' });
                       await new Promise(r => setTimeout(r, item.duration));
                   } else {
-                      // WASD Direct Kinematics Loop
-                      const start = Date.now();
-                      const p = getPhysics();
-                      const target = ipInput.value.trim();
-                      while(Date.now() - start < item.duration && runningPath) {
-                          const frames = generateGait(item.action);
-                          for(const f of frames) {
-                              if(!runningPath) break;
-                              if(target) {
-                                  const tStr = f.map(v => v === -1 ? -1 : Math.round(v)).join(',');
-                                  try { await fetch(`http://${target}/seq?fast=1&t=${tStr}`); } catch(err){}
-                              }
-                              await new Promise(r => setTimeout(r, p.pace));
-                          }
+                      let vx = 0, wz = 0;
+                      if(item.action === 'W') vx = 1;
+                      if(item.action === 'S') vx = -1;
+                      if(item.action === 'A') wz = 1;
+                      if(item.action === 'D') wz = -1;
+                      const paceVal = parseInt(sliderPace ? sliderPace.value : 150);
+                      const speed = 150.0 / paceVal; 
+                      dispatchCmd({ mode: 'walk', vx, vy: 0, wz, speed: speed.toFixed(2) });
+                      
+                          // Heartbeat loop while waiting
+                          const start = Date.now();
+                          while(Date.now() - start < item.duration && runningPath) {
+                              const target = ipInput.value.trim();
+                          if(target) fetchRobot('/ping').catch(()=>{});
+                          await new Promise(r => setTimeout(r, 500));
                       }
                   }
               }
           }
+          dispatchCmd({ mode: 'stand' });
           btnPathRun.innerText = "[EXECUTE LOOP]";
           logTerminal("PATH SEQUENCE HALTED.");
       });
@@ -802,12 +688,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if(btnPathStop) {
       btnPathStop.addEventListener('click', () => {
           runningPath = false;
-          activeMovement = false; // Halt running specific kinematics
-          activeDir = 'IDLE';
+          dispatchCmd({ mode: 'stand' });
       });
   }
-
-  // Initial render empty
   renderPathQueue();
 
 });

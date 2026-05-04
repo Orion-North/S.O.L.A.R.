@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>SOLAR Remote</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">S.O.L.A.R.</p>
+          <h1>Remote</h1>
+        </div>
+        <button class="icon-btn" id="settings-button" aria-label="Connection settings">...</button>
+      </header>
+
+      <section class="hero-panel">
+        <img id="camera-feed" alt="Robot camera feed" />
+        <div class="feed-empty" id="feed-empty">Camera paused</div>
+        <div class="status-pill" id="connection-pill">Offline</div>
+      </section>
+
+      <section class="quick-row">
+        <button class="primary-action" id="live-button">Start camera</button>
+        <button class="danger-action" id="estop-button">Emergency stop</button>
+      </section>
+
+      <section class="drive-panel" aria-label="Drive controls">
+        <button class="drive-btn up" data-drive="forward" aria-label="Forward">Up</button>
+        <button class="drive-btn left" data-drive="left" aria-label="Turn left">Left</button>
+        <button class="drive-stop" id="stop-button" aria-label="Stop">Stop</button>
+        <button class="drive-btn right" data-drive="right" aria-label="Turn right">Right</button>
+        <button class="drive-btn down" data-drive="backward" aria-label="Backward">Down</button>
+      </section>
+
+      <section class="speed-panel">
+        <label for="speed-slider">Speed <span id="speed-value">1.0</span>x</label>
+        <input id="speed-slider" type="range" min="0.4" max="2.2" value="1.0" step="0.1" />
+      </section>
+
+      <section class="actions-grid">
+        <button data-mode="sit">Sit</button>
+        <button data-mode="stretch">Stretch</button>
+        <button data-mode="wag">Wag</button>
+        <button data-mode="dance">Dance</button>
+        <button id="flash-button">Light</button>
+        <button id="stand-button">Stand</button>
+      </section>
+
+      <section class="telemetry-panel">
+        <div>
+          <span>Mode</span>
+          <strong id="mode-readout">--</strong>
+        </div>
+        <div>
+          <span>Response</span>
+          <strong id="latency-readout">--</strong>
+        </div>
+        <div>
+          <span>Signal</span>
+          <strong id="network-readout">--</strong>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="settings-sheet" id="settings-sheet">
+      <form method="dialog">
+        <div class="sheet-header">
+          <h2>Connection</h2>
+          <button class="icon-btn" value="cancel" aria-label="Close settings">x</button>
+        </div>
+        <label for="target-input">Robot or gateway</label>
+        <input id="target-input" type="text" inputmode="url" autocomplete="url" />
+        <label for="token-input">Access code</label>
+        <input id="token-input" type="password" autocomplete="current-password" />
+        <button class="primary-action" id="connect-button" value="default">Connect</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

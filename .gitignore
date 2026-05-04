@@ -1,0 +1,9 @@
+control-panel/node_modules/
+control-panel/dist/
+control-panel/.vite/
+control-panel/node_modules/.vite/
+
+firmware/**/secrets.h
+
+*.log
+*.tmp

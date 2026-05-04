@@ -31,9 +31,21 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 
 ## Repository Structure
 * `/firmware`: ESP32 code (Inverse Kinematics & UDP Comms).
+* `/control-panel`: Technical browser control panel for calibration, telemetry, and low-level operation.
+* `/mobile-app`: Consumer-friendly Android-installable remote interface.
+* `/remote-gateway`: Optional internet-facing relay that forwards the existing ESP32 HTTP API without changing firmware behavior.
 * `/scripts`: Python-based RL inference and GPU-side processing.
 * `/simulation`: URDF models and virtual training environments.
 * `/docs`: System schematics and power-cycle logic.
+
+## Remote Access Direction
+The ESP32 should stay on a trusted Wi-Fi network and keep serving the same local API (`/cmd`, `/status`, `/capture`, `/estop`, calibration, OTA). For world-wide control, run `/remote-gateway` on a machine that can reach the robot locally, then expose that gateway through a secure tunnel, VPS, or reverse proxy.
+
+The Android app path is the separate `/mobile-app` PWA:
+1. Run the remote gateway with `ROBOT_BASE_URL`, `ROBOT_API_TOKEN`, and `GATEWAY_TOKEN`.
+2. Open the gateway URL on Android Chrome.
+3. Use Chrome's install option to add S.O.L.A.R. Control to the home screen.
+4. Set the target to the gateway URL and enter the gateway access code.
 
 ## Development Roadmap
 - [x] Hardware Procurement
