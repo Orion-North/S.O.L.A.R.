@@ -14,6 +14,6 @@
 * 7.4V 2S High-Discharge LiPo Battery
 
 ### Structural & Custom Parts
-* [PLA-CF filament (for 3D pri   nted frame components)](https://ca.store.bambulab.com/products/pla-cf?variant=541209453249892354)
+* [PLA-CF filament (for 3D printed frame components)](https://ca.store.bambulab.com/products/pla-cf?variant=541209453249892354)
 * [TPU 95A HF filament (for 3D printed feet)](https://ca.store.bambulab.com/products/tpu-95a-hf?variant=541209416100941825)
 * [Assorted M3 hardware (screws, washers, nuts)](amazon.ca/dp/B0DJ8DTHB9?ref=ppx_yo2ov_dt_b_fed_asin_title)
