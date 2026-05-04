@@ -47,6 +47,8 @@ The Android app path is the separate `/mobile-app` PWA:
 3. Use Chrome's install option to add S.O.L.A.R. Control to the home screen.
 4. Set the target to the gateway URL and enter the gateway access code.
 
+Production remote control requires `GATEWAY_TOKEN`; without it, the gateway refuses robot control routes by default.
+
 ## Development Roadmap
 - [x] Hardware Procurement
 - [x] Build The Robot

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'solar-mobile-v1';
+const CACHE_NAME = 'solar-mobile-v2';
 const APP_SHELL = ['/', '/index.html', '/style.css', '/main.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

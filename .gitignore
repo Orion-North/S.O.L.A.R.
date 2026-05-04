@@ -7,3 +7,4 @@ firmware/**/secrets.h
 
 *.log
 *.tmp
+output/

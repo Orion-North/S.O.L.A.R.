@@ -11,6 +11,7 @@ const robotBaseUrl = (process.env.ROBOT_BASE_URL || 'http://solar.local').replac
 const gatewayToken = process.env.GATEWAY_TOKEN || '';
 const robotApiToken = process.env.ROBOT_API_TOKEN || '';
 const staticRoot = resolve(process.env.MOBILE_APP_DIR || process.env.CONTROL_PANEL_DIR || join(repoRoot, 'mobile-app'));
+const requireGatewayToken = process.env.REQUIRE_GATEWAY_TOKEN !== '0';
 
 const robotRoutes = new Set([
   '/ping',
@@ -50,14 +51,28 @@ function sendCors(res) {
 }
 
 function isAuthorized(req, url) {
-  if (!gatewayToken) return true;
+  if (!gatewayToken) return !requireGatewayToken;
   return url.searchParams.get('token') === gatewayToken || req.headers['x-solar-token'] === gatewayToken;
+}
+
+function isAuthConfigured() {
+  return Boolean(gatewayToken) || !requireGatewayToken;
+}
+
+function sendAuthFailure(res) {
+  if (!isAuthConfigured()) {
+    res.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ authenticated: false, error: 'gateway_token_not_configured' }));
+    return;
+  }
+
+  res.writeHead(403, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(JSON.stringify({ authenticated: false, error: 'forbidden' }));
 }
 
 async function proxyRobot(req, res, url) {
   if (!isAuthorized(req, url)) {
-    res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('Forbidden');
+    sendAuthFailure(res);
     return;
   }
 
@@ -119,6 +134,17 @@ createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  if (url.pathname === '/auth/check') {
+    if (!isAuthorized(req, url)) {
+      sendAuthFailure(res);
+      return;
+    }
+
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ authenticated: true }));
     return;
   }
 

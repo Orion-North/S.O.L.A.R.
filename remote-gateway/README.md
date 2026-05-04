@@ -17,7 +17,8 @@ Then open `http://localhost:8787` or publish that gateway through a secure tunne
 
 - `ROBOT_BASE_URL`: local robot URL, usually `http://solar.local` or `http://192.168.4.1`
 - `ROBOT_API_TOKEN`: token configured in `firmware/solar_main/secrets.h`, if command-token checks are enabled
-- `GATEWAY_TOKEN`: access code required by the mobile app for remote control
+- `GATEWAY_TOKEN`: access code required by the mobile app for remote control. In production, set this.
+- `REQUIRE_GATEWAY_TOKEN`: defaults to enabled. Set to `0` only for local testing without access control.
 - `PORT`: gateway port, default `8787`
 - `MOBILE_APP_DIR`: static app directory, default `../mobile-app`
 - `CONTROL_PANEL_DIR`: legacy override for serving the technical panel instead

@@ -13,55 +13,76 @@
       <header class="app-header">
         <div>
           <p class="eyebrow">S.O.L.A.R.</p>
-          <h1>Remote</h1>
+          <h1 data-i18n="appTitle">Robot Remote</h1>
+          <p class="header-subtitle" id="target-readout" data-i18n="notConnected">Not connected</p>
         </div>
-        <button class="icon-btn" id="settings-button" aria-label="Connection settings">...</button>
+        <button class="setup-btn" id="settings-button" data-i18n="setUp">Set up</button>
       </header>
 
       <section class="hero-panel">
-        <img id="camera-feed" alt="Robot camera feed" />
-        <div class="feed-empty" id="feed-empty">Camera paused</div>
-        <div class="status-pill" id="connection-pill">Offline</div>
+        <img id="camera-feed" alt="Robot camera feed" hidden />
+        <div class="feed-empty" id="feed-empty">
+          <span class="feed-mark">SOLAR</span>
+          <strong data-i18n="cameraPaused">Camera paused</strong>
+        </div>
+        <div class="status-pill" id="connection-pill"><span></span><span data-i18n="locked">Locked</span></div>
+        <div class="camera-meta">
+          <span id="camera-state" data-i18n="cameraOff">Camera off</span>
+          <strong id="hero-mode" data-i18n="locked">Locked</strong>
+        </div>
       </section>
 
       <section class="quick-row">
-        <button class="primary-action" id="live-button">Start camera</button>
-        <button class="danger-action" id="estop-button">Emergency stop</button>
+        <button class="primary-action" id="live-button" data-i18n="camera">Camera</button>
+        <button class="danger-action" id="estop-button" data-i18n="emergencyStop">Emergency stop</button>
       </section>
 
-      <section class="drive-panel" aria-label="Drive controls">
-        <button class="drive-btn up" data-drive="forward" aria-label="Forward">Up</button>
-        <button class="drive-btn left" data-drive="left" aria-label="Turn left">Left</button>
-        <button class="drive-stop" id="stop-button" aria-label="Stop">Stop</button>
-        <button class="drive-btn right" data-drive="right" aria-label="Turn right">Right</button>
-        <button class="drive-btn down" data-drive="backward" aria-label="Backward">Down</button>
+      <section class="drive-card" aria-label="Drive controls">
+        <div class="section-heading">
+          <h2 data-i18n="drive">Drive</h2>
+          <span id="drive-state" data-i18n="stopped">Stopped</span>
+        </div>
+        <div class="drive-panel">
+          <button class="drive-btn up" data-drive="forward" aria-label="Forward" data-i18n="forward">Forward</button>
+          <button class="drive-btn left" data-drive="left" aria-label="Turn left" data-i18n="left">Left</button>
+          <button class="drive-stop" id="stop-button" aria-label="Stop" data-i18n="stop">Stop</button>
+          <button class="drive-btn right" data-drive="right" aria-label="Turn right" data-i18n="right">Right</button>
+          <button class="drive-btn down" data-drive="backward" aria-label="Backward" data-i18n="back">Back</button>
+        </div>
       </section>
 
       <section class="speed-panel">
-        <label for="speed-slider">Speed <span id="speed-value">1.0</span>x</label>
+        <label for="speed-slider">
+          <span data-i18n="speed">Speed</span>
+          <strong><span id="speed-value">1.0</span>x</strong>
+        </label>
         <input id="speed-slider" type="range" min="0.4" max="2.2" value="1.0" step="0.1" />
       </section>
 
       <section class="actions-grid">
-        <button data-mode="sit">Sit</button>
-        <button data-mode="stretch">Stretch</button>
-        <button data-mode="wag">Wag</button>
-        <button data-mode="dance">Dance</button>
-        <button id="flash-button">Light</button>
-        <button id="stand-button">Stand</button>
+        <div class="section-heading">
+          <h2 data-i18n="moves">Moves</h2>
+          <span data-i18n="quickActions">Quick actions</span>
+        </div>
+        <button data-mode="sit" data-i18n="sit">Sit</button>
+        <button data-mode="stretch" data-i18n="stretch">Stretch</button>
+        <button data-mode="wag" data-i18n="wag">Wag</button>
+        <button data-mode="dance" data-i18n="dance">Dance</button>
+        <button id="flash-button" data-i18n="light">Light</button>
+        <button id="stand-button" data-i18n="stand">Stand</button>
       </section>
 
       <section class="telemetry-panel">
         <div>
-          <span>Mode</span>
+          <span data-i18n="mode">Mode</span>
           <strong id="mode-readout">--</strong>
         </div>
         <div>
-          <span>Response</span>
+          <span data-i18n="response">Response</span>
           <strong id="latency-readout">--</strong>
         </div>
         <div>
-          <span>Signal</span>
+          <span data-i18n="signal">Signal</span>
           <strong id="network-readout">--</strong>
         </div>
       </section>
@@ -70,14 +91,24 @@
     <dialog class="settings-sheet" id="settings-sheet">
       <form method="dialog">
         <div class="sheet-header">
-          <h2>Connection</h2>
+          <div>
+            <h2 data-i18n="settings">Settings</h2>
+            <p id="auth-readout" class="sheet-subtitle" data-i18n="authRequired">Authorization required</p>
+          </div>
           <button class="icon-btn" value="cancel" aria-label="Close settings">x</button>
         </div>
-        <label for="target-input">Robot or gateway</label>
+        <label for="language-select" data-i18n="language">Language</label>
+        <select id="language-select">
+          <option value="en">English</option>
+          <option value="fr">Francais</option>
+          <option value="es">Espanol</option>
+        </select>
+        <label for="target-input" data-i18n="robotOrGateway">Robot or gateway</label>
         <input id="target-input" type="text" inputmode="url" autocomplete="url" />
-        <label for="token-input">Access code</label>
+        <label for="token-input" data-i18n="accessCode">Access code</label>
         <input id="token-input" type="password" autocomplete="current-password" />
-        <button class="primary-action" id="connect-button" value="default">Connect</button>
+        <p class="settings-note" data-i18n="authNote">Only users with the gateway access code can send movement, camera, or emergency commands.</p>
+        <button class="primary-action" id="connect-button" value="default" data-i18n="connect">Connect</button>
       </form>
     </dialog>
 
