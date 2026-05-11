@@ -8,3 +8,11 @@ firmware/**/secrets.h
 *.log
 *.tmp
 output/
+
+__pycache__/
+*.py[cod]
+
+external/
+
+.pio/
+.venv-pio/

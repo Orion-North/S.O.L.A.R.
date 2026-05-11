@@ -77,7 +77,21 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 Preferences prefs;
 
 // Dynamic configuration instead of static consts
-float offsets[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const int OFFSET_SCHEMA_VERSION = 3;
+const float DEFAULT_OFFSETS[16] = {
+  0, 0, 0,     // FL
+  0, 0, 0,     // FR
+  0, 0, 0,     // BR
+  0, 0, 0,     // BL
+  0, 0, 0, 0
+};
+float offsets[16] = {
+  0, 0, 0,
+  0, 0, 0,
+  0, 0, 0,
+  0, 0, 0,
+  0, 0, 0, 0
+};
 float currentAngle[16];
 float targetAngle[16];
 
@@ -113,9 +127,10 @@ void applyLegSets() {
   BR_HIP = SET_PINS[BR_SET - 1][0]; BR_KNEE = SET_PINS[BR_SET - 1][1]; BR_FOOT = SET_PINS[BR_SET - 1][2];
 }
 
-int flashPin = 4; // AI-Thinker onboard high-power LED
-bool flashOverride = false;
-bool flashOverrideState = false;
+const int STATUS_LED_PIN = 33; // AI-Thinker small onboard red LED, active-low
+const bool STATUS_LED_ACTIVE_LOW = true;
+bool statusLedOverride = false;
+bool statusLedOverrideState = false;
 
 // --- MOTION STATE VARIABLES ---
 float cmd_vx = 0.0;
@@ -151,6 +166,10 @@ void lockState() {
 
 void unlockState() {
   if (stateMutex != NULL) xSemaphoreGive(stateMutex);
+}
+
+void writeStatusLed(bool on) {
+  digitalWrite(STATUS_LED_PIN, STATUS_LED_ACTIVE_LOW ? !on : on);
 }
 
 float boundedArg(const String& name, float fallback, float minVal, float maxVal) {
@@ -249,23 +268,23 @@ void setLegTarget(int legIndex, float h, float k, float f) {
   unlockState();
 }
 
-void blinkFlash(int count, int onMs, int offMs) {
+void blinkStatusLed(int count, int onMs, int offMs) {
   for (int i=0; i<count; i++) {
-    digitalWrite(flashPin, HIGH);
+    writeStatusLed(true);
     delay(onMs);
-    digitalWrite(flashPin, LOW);
+    writeStatusLed(false);
     delay(offMs);
   }
 }
 
 void updateAliveLight() {
   lockState();
-  bool overrideEnabled = flashOverride;
-  bool overrideState = flashOverrideState;
+  bool overrideEnabled = statusLedOverride;
+  bool overrideState = statusLedOverrideState;
   unlockState();
 
   if (overrideEnabled) {
-    digitalWrite(flashPin, overrideState ? HIGH : LOW);
+    writeStatusLed(overrideState);
     return;
   }
 
@@ -274,7 +293,7 @@ void updateAliveLight() {
   if (now - lastAliveBlink >= interval) {
     lastAliveBlink = now;
     aliveBlinkState = !aliveBlinkState;
-    digitalWrite(flashPin, aliveBlinkState ? HIGH : LOW);
+    writeStatusLed(aliveBlinkState);
   }
 }
 
@@ -398,11 +417,13 @@ void handleOtaUpload() {
 
 void loadSettings() {
   prefs.begin("solar_cfg", false);
-  if (!prefs.getBool("recal_zero", false)) {
+  int offsetSchema = prefs.getInt("offset_schema", 0);
+  if (!prefs.getBool("recal_zero", false) || offsetSchema < OFFSET_SCHEMA_VERSION) {
     for(int i=0; i<16; i++) {
-        prefs.putFloat(("o" + String(i)).c_str(), 0.0);
+        prefs.putFloat(("o" + String(i)).c_str(), DEFAULT_OFFSETS[i]);
     }
     prefs.putBool("recal_zero", true);
+    prefs.putInt("offset_schema", OFFSET_SCHEMA_VERSION);
   }
   FL_SET = prefs.getInt("FL_SET", FL_SET);
   FR_SET = prefs.getInt("FR_SET", FR_SET);
@@ -459,12 +480,8 @@ void gaitTask(void *pvParameters) {
             emote_phase = 0;
         } 
         else if (mode == "idle") {
-            // Alive Idle Loop Math
-            emote_phase += dt * 0.5; // slow breathing
-            float breath = sin(emote_phase * PI * 2) * 10.0; // +/- 10 degrees
-            for(int i=0; i<4; i++) {
-               setLegTarget(i, 90, 90 + breath * sign_K[i], 90 + (breath*0.6) * sign_F[i]);
-            }
+            for(int i=0; i<4; i++) setLegTarget(i, 90, 90, 90);
+            emote_phase = 0;
         }
         else if (mode == "sit") {
             setLegTarget(0, 90, 90, 90);
@@ -594,9 +611,9 @@ void setup() {
   startup_time = millis();
   stateMutex = xSemaphoreCreateMutex();
 
-  pinMode(flashPin, OUTPUT);
-  digitalWrite(flashPin, LOW);
-  blinkFlash(3, 120, 120);
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  writeStatusLed(false);
+  blinkStatusLed(3, 120, 120);
 
   loadSettings();
 
@@ -718,7 +735,7 @@ void setup() {
     dbg += "Mode: " + cmd_mode + "\n";
     dbg += "Torque: " + String(torqueEnabled ? "ON" : "OFF") + "\n";
     dbg += "Calibration: " + String(calibrationMode ? "ON" : "OFF") + "\n";
-    dbg += "Flash Override: " + String(flashOverride ? "ON" : "OFF") + "\n";
+    dbg += "Status LED Override: " + String(statusLedOverride ? "ON" : "OFF") + "\n";
     unlockState();
     dbg += "Free Heap: " + String(ESP.getFreeHeap()) + "\n";
     server.send(200, "text/plain", dbg);
@@ -789,17 +806,17 @@ void setup() {
     if (!requireApiAuth()) return;
     String state = server.arg("state");
     lockState();
-    flashOverride = true;
-    flashOverrideState = state == "1";
+    statusLedOverride = true;
+    statusLedOverrideState = state == "1";
     unlockState();
-    digitalWrite(flashPin, flashOverrideState ? HIGH : LOW);
+    writeStatusLed(statusLedOverrideState);
     server.send(200, "text/plain", "FLASH " + state);
   });
 
   server.on("/flash/auto", []() {
     if (!requireApiAuth()) return;
     lockState();
-    flashOverride = false;
+    statusLedOverride = false;
     unlockState();
     server.send(200, "text/plain", "FLASH AUTO");
   });

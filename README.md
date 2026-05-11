@@ -34,8 +34,8 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 * `/control-panel`: Technical browser control panel for calibration, telemetry, and low-level operation.
 * `/mobile-app`: Consumer-friendly Android-installable remote interface.
 * `/remote-gateway`: Optional internet-facing relay that forwards the existing ESP32 HTTP API without changing firmware behavior.
-* `/scripts`: Python-based RL inference and GPU-side processing.
-* `/simulation`: URDF models and virtual training environments.
+* `/scripts`: Python-based host-side inference and GPU-side processing.
+* `/simulation`: Motion-only quadruped RL setup, URDF/USD assets, and virtual training environments.
 * `/docs`: System schematics and power-cycle logic.
 
 ## Remote Access Direction
@@ -54,8 +54,22 @@ Production remote control requires `GATEWAY_TOKEN`; without it, the gateway refu
 - [x] Build The Robot
 - [x] Program Simple Movement
 - [x] ESP32 to RTX 5080 Bridge Over Wifi
+- [x] RL Inference Bridge Starter
 - [ ] Solar Charge/Sleep Logic Integration
 - [ ] Autonomous Navigation (RL Stretch Goal)
+
+## RL Starter
+The current RL priority is motion only: train the quadruped to stand, walk, and
+track velocity commands before adding solar autonomy. The Isaac Lab setup lives
+in `/simulation` and is ready to run built-in quadruped training until the
+custom S.O.L.A.R. robot model exists.
+
+```powershell
+.\simulation\run_builtin_a1_smoke_test.ps1
+```
+
+The later host-side inference bridge lives in `/scripts/rl`; keep it separate
+from simulator training until a policy is ready to deploy.
 
 ## Nested Objectives (For STEM Program Deliverables)
 - [x] Build Functioning Quadruped Prototype With No Solar Power (By End Of Capstone Alpha Project)
