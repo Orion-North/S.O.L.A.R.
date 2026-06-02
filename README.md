@@ -73,7 +73,7 @@ from simulator training until a policy is ready to deploy.
 
 ## Nested Objectives (For STEM Program Deliverables)
 - [x] Build Functioning Quadruped Prototype With No Solar Power (By End Of Capstone Alpha Project)
-- [ ] Charge The Battery Any Amount With Solar Pannels Mounted On The Robot
+- [x] Charge The Battery Any Amount With Solar Pannels Mounted On The Robot
 - [ ] Program The Robot To Charge And Move So It Can Sustain Itself In Sunny Areas (By End Of Capstone Beta Project)
 - [ ] Program The Robot With RL/CV To Locate Sunny Areas And Budget Energy Until They Are Found (Stretch Goal)
 
