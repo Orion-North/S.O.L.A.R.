@@ -66,10 +66,87 @@ Training logs go under:
 external/IsaacLab/logs/rsl_rl/unitree_a1_flat
 ```
 
+## S.O.L.A.R. Proxy Asset
+
+The full Fusion STEP assembly lives in:
+
+```text
+simulation/source_model/assembly.step
+```
+
+The generated Isaac training proxy lives in:
+
+```text
+simulation/assets/solar/solar.urdf
+simulation/assets/solar/solar.usd
+```
+
+The proxy is intentionally simple: one body box, 12 actuated servo joints, four
+leg chains, and four fixed foot bodies named `FL_foot`, `FR_foot`, `RL_foot`,
+and `RR_foot`. Regenerate it from the STEP analysis with:
+
+```powershell
+python .\simulation\tools\generate_solar_proxy_urdf.py
+.\simulation\convert_solar_urdf.ps1
+```
+
+Do not merge fixed joints during conversion. Isaac Lab needs the foot bodies to
+remain separate for contact rewards and termination checks.
+
+## Run S.O.L.A.R. Proxy Training
+
+The local task is registered as:
+
+```text
+Solar-Velocity-Flat-v0
+```
+
+Solar-aware charging training is registered separately as:
+
+```text
+Solar-Charge-Flat-IMU-v0
+```
+
+Run a quick smoke test:
+
+```powershell
+.\simulation\train_solar_proxy.ps1 -NumEnvs 16 -MaxIterations 1
+```
+
+Run a first real flat-ground training pass:
+
+```powershell
+.\simulation\train_solar_proxy.ps1 -NumEnvs 256 -MaxIterations 300
+```
+
+Run a longer high-throughput training pass:
+
+```powershell
+.\simulation\train_solar_proxy.ps1 -NumEnvs 2048 -MaxIterations 1000
+```
+
+Train the solar-charge policy, which observes simulated panel voltage and is
+rewarded for finding sun, lowering into a charging pose, and minimizing motion
+and joint power while charging:
+
+```powershell
+.\simulation\train_solar_charge.ps1 -NumEnvs 32768 -MaxIterations 2500
+```
+
+Logs go under:
+
+```text
+external/IsaacLab/logs/rsl_rl/solar_flat
+external/IsaacLab/logs/rsl_rl/solar_flat_solar_charge
+```
+
+The current proxy standing pose uses radial hips near 45 degrees outward and
+thigh joints just inside their 60-degree downward mechanical stop.
+
 ## Model Boundary
 
-Do not start the custom S.O.L.A.R. environment until the robot model exists.
-The model should provide:
+The first generated proxy exists, but it still needs visual/physics inspection
+before training. The model should provide:
 
 - 12 actuated revolute joints, 3 per leg.
 - Correct joint names and left/right sign conventions.

@@ -1,5 +1,7 @@
 control-panel/node_modules/
 control-panel/dist/
+control-panel/release/
+control-panel/release-desktop/
 control-panel/.vite/
 control-panel/node_modules/.vite/
 
@@ -13,6 +15,8 @@ __pycache__/
 *.py[cod]
 
 external/
+simulation/.generated/
+simulation/source_model/
 
 .pio/
 .venv-pio/

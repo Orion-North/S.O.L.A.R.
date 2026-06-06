@@ -3,52 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>S.O.L.A.R. System</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>SOLAR Control Panel</title>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
-    <!-- Deep Space Background Overlays -->
-    <div class="stars"></div>
-    <div class="twinkling"></div>
-    <div class="space-gradient"></div>
-    
     <div class="app-container">
-      
-      <!-- Top Header -->
       <header class="top-bar">
         <div class="branding">
-          <h1>S.O.L.A.R. System</h1>
+          <span class="eyebrow">Quadruped Operations</span>
+          <h1>S.O.L.A.R.</h1>
         </div>
         <div class="system-status">
           <div class="status-indicator">
-            <span class="block"></span>
+            <span class="block offline"></span>
             <span class="status-text target-ip-text">NODE: [OFFLINE]</span>
           </div>
         </div>
       </header>
 
-      <!-- Tab Navigation -->
-      <nav class="tab-nav">
-        <button class="nav-btn active" data-target="view-tactical">[ ORBITAL VIEW ]</button>
-        <button class="nav-btn" data-target="view-calib">[ KINEMATICS LAB ]</button>
-        <button class="nav-btn" data-target="view-path">[ FLIGHT PATH ]</button>
+      <nav class="tab-nav" aria-label="Control panel views">
+        <button class="nav-btn active" data-target="view-tactical">Orbital View</button>
+        <button class="nav-btn" data-target="view-calib">Kinematics Lab</button>
+        <button class="nav-btn" data-target="view-path">Flight Path</button>
       </nav>
 
-      <!-- Main Layout -->
       <main class="dashboard-grid" id="view-tactical">
-        
-        <!-- Center Panel: Camera Feed -->
         <section class="main-view tactical-panel glass-panel">
           <div class="panel-header">
-            <h2>> PRIMARY OPTICAL SENSOR</h2>
-            <div class="feed-status blink">LIVE</div>
+            <div>
+              <span class="section-kicker">Primary Optical Sensor</span>
+              <h2>Camera Feed</h2>
+            </div>
+            <div class="feed-status" id="feed-status">Manual FPV</div>
           </div>
           <div class="camera-container">
-            <!-- No offline classes or opacity tricks, raw feed image -->
-            <img id="cam-stream" src="" alt="AWAITING PHOTO CAPTURE..." class="cam-feed" />
+            <img id="cam-stream" src="" alt="Camera feed awaiting capture" class="cam-feed" />
+            <div class="camera-placeholder" id="camera-placeholder">
+              <span>No frame loaded</span>
+            </div>
             <div class="cam-overlay">
               <div class="crosshair-tactical">
                 <div class="hline"></div>
@@ -56,152 +48,180 @@
                 <div class="center-dot"></div>
               </div>
               <div class="cam-data-corners">
-                <div class="corner tl"></div><div class="corner tr"></div>
-                <div class="corner bl"></div><div class="corner br"></div>
+                <div class="corner tl"></div>
+                <div class="corner tr"></div>
+                <div class="corner bl"></div>
+                <div class="corner br"></div>
               </div>
               <div class="cam-data">
-                <span id="coord-hud">AWAITING IMU TELEMETRY...</span>
-                <span>RES: 160x120 (QQVGA)</span>
+                <span id="coord-hud">Awaiting IMU telemetry</span>
+                <span>160x120 QQVGA</span>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- Right Panel: Comms & OTA -->
         <aside class="panel tactical-panel side-panel glass-panel">
-          
           <div class="panel-header">
-            <h2>> UPLINK CONFIG</h2>
+            <div>
+              <span class="section-kicker">Uplink Config</span>
+              <h2>Robot Link</h2>
+            </div>
           </div>
           <div class="panel-content">
-            <div class="connection-config">
-              <label for="ip-input">ROBOT OR REMOTE GATEWAY</label>
+            <div class="connection-config control-group">
+              <label for="ip-input">Robot or remote gateway</label>
               <div class="input-group">
                 <input type="text" id="ip-input" value="solar.local" autocomplete="url" inputmode="url" />
-                <button id="apply-ip" class="btn">INITIALIZE</button>
+                <button id="apply-ip" class="btn btn-primary">Initialize</button>
               </div>
-              <label for="token-input" class="token-label">ACCESS CODE</label>
+              <label for="token-input" class="token-label">Access code</label>
               <input type="password" id="token-input" autocomplete="current-password" placeholder="Optional" />
             </div>
 
-            <div class="action-grid actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-              <button class="btn btn-ping" id="btn-ping">[PING NODE]</button>
-              <button class="btn btn-flash" id="btn-flash" style="border-color: var(--text-main); color: var(--text-main);">[TOGGLE FLASH]</button>
-              <button class="btn btn-ping" id="btn-turtle" style="border-color: var(--accent-amber); color: var(--accent-amber);">[TURTLE (F)]</button>
-              <button class="btn btn-ping" id="btn-dance" style="border-color: var(--accent-amber); color: var(--accent-amber);">[DANCE (E)]</button>
-              <button class="btn btn-ping" id="btn-sit" style="border-color: var(--accent-amber); color: var(--accent-amber);">[SIT (C)]</button>
-              <button class="btn btn-ping" id="btn-stretch" style="border-color: var(--accent-amber); color: var(--accent-amber);">[STRETCH (X)]</button>
-              <button class="btn btn-ping" id="btn-wag" style="border-color: var(--accent-amber); color: var(--accent-amber);">[WAG (Z)]</button>
-              <button class="btn btn-ping" id="btn-capture" style="border-color: var(--accent-amber); color: var(--accent-amber);">[PHOTO (Q)]</button>
-              <button class="btn btn-ping" id="btn-live-feed" style="border-color: var(--accent-cyan); color: var(--accent-cyan);">[FPV LIVE]</button>
-              <button class="btn btn-estop" id="btn-estop">[E-STOP]</button>
-            </div>
-
-            <div class="wasd-cluster">
-              <div class="wasd-key" id="key-w">W</div>
-              <div class="wasd-row">
-                <div class="wasd-key" id="key-a">A</div>
-                <div class="wasd-key" id="key-s">S</div>
-                <div class="wasd-key" id="key-d">D</div>
+            <div class="control-group host-guardrail">
+              <div class="group-title">Host Guardrails</div>
+              <div class="guardrail-grid">
+                <span>Link path</span>
+                <strong id="proxy-mode-text">Browser direct mode</strong>
+                <span>Telemetry</span>
+                <strong>Fast status / 1.5s</strong>
+                <span>Camera</span>
+                <strong>Manual pull</strong>
               </div>
             </div>
 
-            <div class="physics-panel">
+            <div class="control-group safety-group">
+              <div class="group-title">Safety</div>
+              <div class="safety-actions">
+                <button class="btn btn-estop" id="btn-estop">E-Stop</button>
+                <button class="btn btn-danger-outline" id="btn-clear-estop">Clear E-Stop</button>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <div class="group-title">Quick Commands</div>
+              <div class="action-grid actions">
+                <button class="btn btn-secondary" id="btn-ping">Ping Node</button>
+                <button class="btn btn-neutral" id="btn-flash">Toggle Flash</button>
+                <button class="btn btn-warning" id="btn-turtle">Turtle</button>
+                <button class="btn btn-warning" id="btn-dance">Dance</button>
+                <button class="btn btn-warning" id="btn-sit">Sit</button>
+                <button class="btn btn-warning" id="btn-stretch">Stretch</button>
+                <button class="btn btn-warning" id="btn-wag">Wag</button>
+                <button class="btn btn-warning" id="btn-capture">Photo</button>
+                <button class="btn btn-secondary" id="btn-live-feed">FPV Live</button>
+              </div>
+            </div>
+
+            <div class="drive-card control-group">
+              <div class="group-title">Drive</div>
+              <div class="wasd-cluster">
+                <div class="wasd-key" id="key-w">W</div>
+                <div class="wasd-row">
+                  <div class="wasd-key" id="key-a">A</div>
+                  <div class="wasd-key" id="key-s">S</div>
+                  <div class="wasd-key" id="key-d">D</div>
+                </div>
+              </div>
               <div class="slider-group">
-                <label>CYCLE DELAY (<span id="val-pace">150</span>ms)</label>
+                <label for="slider-pace">Cycle delay <span><span id="val-pace">150</span> ms</span></label>
                 <input type="range" id="slider-pace" min="10" max="500" value="150" step="10">
               </div>
             </div>
-            
-            
-            <div class="terminal-box" id="telemetry-out" style="margin-bottom: 10px; border-color: var(--accent-amber); color: var(--accent-amber);">
-              > AWAITING TELEMETRY...<br>
-            </div>
 
-            <div class="terminal-box" id="terminal-out">
-              > SYSTEM BOOT SEQ... OK<br>
-              > WAITING FOR NODE...<br>
+            <div class="terminal-grid">
+              <div class="terminal-box telemetry-box" id="telemetry-out">
+                &gt; AWAITING TELEMETRY...
+              </div>
+              <div class="terminal-box" id="terminal-out">
+                &gt; SYSTEM BOOT SEQ... OK<br>
+                &gt; WAITING FOR NODE...<br>
+              </div>
             </div>
           </div>
-
         </aside>
       </main>
 
-      <main class="dashboard-grid" id="view-calib" style="display: none; grid-template-columns: 1fr;">
-        <section class="tactical-panel full-panel glass-panel" style="height: 100%; display: flex; flex-direction: column;">
+      <main class="dashboard-grid dashboard-grid--single" id="view-calib">
+        <section class="tactical-panel full-panel glass-panel">
           <div class="panel-header">
-            <h2>> KINEMATIC CALIBRATION ARRAY</h2>
-            <div style="font-size: 0.8rem; color: var(--accent-amber);">// LIVE TUNING ENABLED</div>
-          </div>
-          <div class="panel-content calib-content" style="max-height: none; flex-grow: 1;">
-            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-              <button class="btn btn-flash" id="btn-calib-mode" style="border-color: var(--accent-red); color: var(--accent-red); flex: 1;">[ENABLE CALIB MODE]</button>
-              <button class="btn btn-ping" id="btn-torque" style="border-color: var(--accent-amber); color: var(--accent-amber); flex: 1;">[DISABLE TORQUE]</button>
-              <button class="btn btn-ping" id="btn-test-sequence" style="border-color: var(--accent-amber); color: var(--accent-amber); flex: 1;">[IDENTIFY LEG SETS]</button>
+            <div>
+              <span class="section-kicker">Kinematic Calibration Array</span>
+              <h2>Live Tuning</h2>
             </div>
-            
-            <div style="margin: 10px 0; padding: 10px; border: 1px dashed var(--text-muted); color: var(--text-main); font-size: 0.9rem;">
-              > INSTRUCTION: Click to select any offset field. Use <span style="background:var(--text-main); color:#000; padding: 2px 5px; font-weight:bold;">UP</span> / <span style="background:var(--text-main); color:#000; padding: 2px 5px; font-weight:bold;">DOWN</span> arrows to actively tune the motor live. Press SAVE TO NVS to commit. 
+            <div class="panel-note">Live tuning enabled</div>
+          </div>
+          <div class="panel-content calib-content">
+            <div class="calib-toolbar">
+              <button class="btn btn-danger-outline" id="btn-calib-mode">Enable Calib Mode</button>
+              <button class="btn btn-warning" id="btn-torque">Enable Torque</button>
+              <button class="btn btn-warning" id="btn-test-sequence">Identify Leg Sets</button>
             </div>
 
-            <div class="calib-scroll" id="calib-container" style="flex-grow: 1;">
-              <!-- Dynamically populated by JS -->
+            <div class="instruction-strip">
+              Select an offset field. Use <span class="keyboard-chip">Up</span> or
+              <span class="keyboard-chip">Down</span> to tune live, then save to NVS.
+            </div>
+
+            <div class="calib-scroll" id="calib-container">
               <div class="warning-text">AWAITING NODE CONNECTION...</div>
             </div>
-            <button class="btn btn-ping" id="btn-save-calib" style="margin-top: 10px;">[SAVE TO NVS]</button>
+            <button class="btn btn-primary" id="btn-save-calib">Save to NVS</button>
           </div>
         </section>
       </main>
-      
-      <main class="dashboard-grid" id="view-path" style="display: none; grid-template-columns: 1fr 1fr;">
-        <!-- Left Panel: Actions to click -->
-        <section class="tactical-panel full-panel glass-panel" style="display: flex; flex-direction: column;">
-          <div class="panel-header">
-            <h2>> AVAILABLE ACTIONS</h2>
-            <div style="font-size: 0.8rem; color: var(--accent-amber);">// SELECT TO APPEND</div>
-          </div>
-          <div class="panel-content" style="display: flex; flex-direction: column; gap: 10px;">
-             <!-- Duration input for movement actions -->
-             <div class="slider-group">
-                <label>ACTION DURATION (<span id="val-path-duration">1500</span>ms)</label>
-                <input type="range" id="path-duration-slider" min="500" max="5000" step="100" value="1500">
-             </div>
 
-             <div class="action-grid actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                <button class="btn btn-ping path-add-btn" data-action="W">[WALK FWD (W)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="S">[WALK BCK (S)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="A">[TURN L (A)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="D">[TURN R (D)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="F" style="border-color: var(--accent-amber); color: var(--accent-amber);">[FLIP (F)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="E" style="border-color: var(--accent-amber); color: var(--accent-amber);">[DANCE (E)]</button>
-                <button class="btn btn-ping path-add-btn" data-action="WAIT" style="grid-column: span 2;">[WAIT/DELAY]</button>
-             </div>
+      <main class="dashboard-grid path-grid" id="view-path">
+        <section class="tactical-panel full-panel glass-panel">
+          <div class="panel-header">
+            <div>
+              <span class="section-kicker">Available Actions</span>
+              <h2>Build Sequence</h2>
+            </div>
+            <div class="panel-note">Select to append</div>
+          </div>
+          <div class="panel-content">
+            <div class="slider-group">
+              <label for="path-duration-slider">Action duration <span><span id="val-path-duration">1500</span> ms</span></label>
+              <input type="range" id="path-duration-slider" min="500" max="5000" step="100" value="1500">
+            </div>
+
+            <div class="action-grid actions">
+              <button class="btn btn-secondary path-add-btn" data-action="W">Walk Forward</button>
+              <button class="btn btn-secondary path-add-btn" data-action="S">Walk Back</button>
+              <button class="btn btn-secondary path-add-btn" data-action="A">Turn Left</button>
+              <button class="btn btn-secondary path-add-btn" data-action="D">Turn Right</button>
+              <button class="btn btn-warning path-add-btn" data-action="F">Flip</button>
+              <button class="btn btn-warning path-add-btn" data-action="E">Dance</button>
+              <button class="btn btn-neutral path-add-btn btn-wide" data-action="WAIT">Wait / Delay</button>
+            </div>
           </div>
         </section>
 
-        <!-- Right Panel: The Queue -->
-        <section class="tactical-panel full-panel glass-panel" style="display: flex; flex-direction: column;">
+        <section class="tactical-panel full-panel glass-panel">
           <div class="panel-header">
-            <h2>> SEQUENCE QUEUE</h2>
-            <div style="font-size: 0.8rem; color: var(--accent-amber);">// CONTINUOUS LOOP</div>
-          </div>
-          <div class="panel-content" style="flex-grow: 1; display: flex; flex-direction: column;">
-            <div class="calib-scroll" id="path-queue-container" style="flex-grow: 1; margin-bottom: 15px; border: 1px dashed var(--text-muted); padding: 5px; min-height: 200px;">
-                <!-- Queue Items Go Here -->
+            <div>
+              <span class="section-kicker">Sequence Queue</span>
+              <h2>Autonomous Loop</h2>
             </div>
-            
-            <div style="display: flex; gap: 5px;">
-                <button class="btn btn-ping" id="btn-path-run" style="flex: 2; border-color: var(--accent-amber); color: var(--accent-amber);">[EXECUTE LOOP]</button>
-                <button class="btn btn-ping" id="btn-path-stop" style="flex: 1; border-color: var(--accent-red); color: var(--accent-red);">[HALT]</button>
-                <button class="btn btn-flash" id="btn-path-clear" style="flex: 1; color: var(--text-muted);">[CLEAR]</button>
+            <div class="panel-note">Continuous loop</div>
+          </div>
+          <div class="panel-content path-panel-content">
+            <div class="calib-scroll queue-box" id="path-queue-container"></div>
+
+            <div class="button-row">
+              <button class="btn btn-warning btn-grow" id="btn-path-run">Execute Loop</button>
+              <button class="btn btn-danger-outline" id="btn-path-stop">Halt</button>
+              <button class="btn btn-neutral" id="btn-path-clear">Clear</button>
             </div>
           </div>
         </section>
       </main>
-      
-      <!-- Footer -->
+
       <footer class="bottom-bar">
-        <p>SECURE CHANNEL // DISTRIBUTED REINFORCEMENT LEARNING ARCHITECTURE // SYSTEM TIME: <span id="sys-time">00:00:00</span></p>
+        <p>Secure channel // distributed reinforcement learning architecture</p>
+        <p>System time: <span id="sys-time">00:00:00</span></p>
       </footer>
     </div>
 

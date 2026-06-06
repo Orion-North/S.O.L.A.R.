@@ -20,6 +20,19 @@ Completed:
   `rtx.scenedb.plugin.dll`.
 - Switched `open_isaac_sim.ps1` to the PXR/Hydra Kit app for a non-headless
   GUI that avoids the RTX scene database crash.
+- Imported `simulation/source_model/assembly.step` with FreeCAD and extracted
+  component measurements.
+- Generated `simulation/assets/solar/solar.urdf` as a simplified motion-only
+  training proxy.
+- Converted the proxy URDF to `simulation/assets/solar/solar.usd`.
+- Added the local Isaac Lab task `Solar-Velocity-Flat-v0`.
+- Verified one headless RSL-RL iteration on `Solar-Velocity-Flat-v0` with 16
+  environments.
+- Updated the proxy hip axes for radial outward hip rotation and set the
+  default stance near the real robot's 45-degree hip / 60-degree thigh-down
+  pose.
+- Ran `Solar-Velocity-Flat-v0` with 2048 environments for 1000 iterations. The
+  final checkpoint is `external/IsaacLab/logs/rsl_rl/solar_flat/2026-05-12_18-36-47/model_999.pt`.
 
 Known note:
 

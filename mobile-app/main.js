@@ -12,6 +12,7 @@ const translations = {
     cameraLive: 'Camera live',
     reconnecting: 'Reconnecting',
     connectingCamera: 'Connecting camera',
+    clearEstop: 'Clear E-stop',
     standby: 'Standby',
     camera: 'Camera',
     stopCamera: 'Stop camera',
@@ -59,6 +60,7 @@ const translations = {
     cameraLive: 'Camera active',
     reconnecting: 'Reconnexion',
     connectingCamera: 'Connexion camera',
+    clearEstop: 'Effacer arret',
     standby: 'En attente',
     camera: 'Camera',
     stopCamera: 'Arreter camera',
@@ -106,6 +108,7 @@ const translations = {
     cameraLive: 'Camara activa',
     reconnecting: 'Reconectando',
     connectingCamera: 'Conectando camara',
+    clearEstop: 'Borrar parada',
     standby: 'Espera',
     camera: 'Camara',
     stopCamera: 'Detener camara',
@@ -165,12 +168,14 @@ const heroMode = document.getElementById('hero-mode');
 const driveState = document.getElementById('drive-state');
 const liveButton = document.getElementById('live-button');
 const estopBtn = document.getElementById('estop-button');
+const clearEstopBtn = document.getElementById('clear-estop-button');
 const stopButton = document.getElementById('stop-button');
 const speedSlider = document.getElementById('speed-slider');
 const speedValue = document.getElementById('speed-value');
 const modeReadout = document.getElementById('mode-readout');
 const latencyReadout = document.getElementById('latency-readout');
 const networkReadout = document.getElementById('network-readout');
+const imuReadout = document.getElementById('imu-readout');
 const settingsButton = document.getElementById('settings-button');
 const settingsSheet = document.getElementById('settings-sheet');
 const targetInput = document.getElementById('target-input');
@@ -183,6 +188,7 @@ const standButton = document.getElementById('stand-button');
 const controlButtons = [
   liveButton,
   estopBtn,
+  clearEstopBtn,
   stopButton,
   speedSlider,
   flashButton,
@@ -329,6 +335,16 @@ async function refreshStatus() {
     modeReadout.textContent = translations[state.language]?.[mode] || mode;
     heroMode.textContent = mode === '--' ? t('standby') : mode;
     networkReadout.textContent = status.wifi_mode ? String(status.wifi_mode).replaceAll('_', ' ') : '--';
+    if (!status.imu_ready) {
+      imuReadout.textContent = '--';
+    } else if (status.accel_ready) {
+      const heading = status.mag_ready ? Number(status.heading_deg || 0).toFixed(0) : 'M--';
+      imuReadout.textContent = `${Number(status.roll_deg || 0).toFixed(0)}/${Number(status.pitch_deg || 0).toFixed(0)}/${heading}`;
+    } else if (status.gyro_ready) {
+      imuReadout.textContent = 'GYRO';
+    } else {
+      imuReadout.textContent = 'PART';
+    }
     setAuthState('online', t('authorized'));
   } catch {
     setAuthState('offline');
@@ -457,6 +473,15 @@ estopBtn.addEventListener('click', async () => {
   clearDriveUi();
   modeReadout.textContent = 'E-stop';
   heroMode.textContent = 'E-stop';
+});
+
+clearEstopBtn.addEventListener('click', async () => {
+  if (!state.authenticated) return;
+  await requestRobot('/estop/clear').catch(() => setAuthState('offline'));
+  estopBtn.classList.remove('active');
+  clearDriveUi();
+  modeReadout.textContent = t('standby');
+  heroMode.textContent = t('standby');
 });
 
 speedSlider.addEventListener('input', () => {

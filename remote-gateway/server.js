@@ -17,11 +17,15 @@ const robotRoutes = new Set([
   '/ping',
   '/capture',
   '/debug',
+  '/imu',
+  '/obs',
   '/cmd',
+  '/rl',
   '/status',
   '/flash',
   '/flash/auto',
   '/estop',
+  '/estop/clear',
   '/testseq',
   '/settings/get',
   '/settings/set',
@@ -81,13 +85,17 @@ async function proxyRobot(req, res, url) {
     target.searchParams.delete('token');
   }
   if (robotApiToken) {
-    target.searchParams.set('token', robotApiToken);
+    target.searchParams.delete('token');
   }
 
   try {
+    const headers = { 'user-agent': 'solar-remote-gateway' };
+    if (robotApiToken) {
+      headers['x-solar-token'] = robotApiToken;
+    }
     const upstream = await fetch(target, {
       method: req.method,
-      headers: { 'user-agent': 'solar-remote-gateway' },
+      headers,
     });
 
     sendCors(res);

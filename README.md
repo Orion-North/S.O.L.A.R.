@@ -22,6 +22,7 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 * **Controller:** ESP32-CAM (Vision + Logic).
 * **Actuation:** 12-DOF via MG90S Metal Gear Micro Servos (3-DOF per leg).
 * **Driver:** PCA9685 16-Channel I2C PWM Controller.
+* **IMU:** Adafruit 10-DOF over shared I2C. L3GD20H gyroscope and LSM303D accel/mag are sampled locally at 50 Hz; BMP180 is detected but not used for high-rate telemetry.
 
 ### Structural Materials
 * **Frame:** PLA-CF (Carbon Fiber Reinforced) for maximum structural rigidity and minimal weight.
@@ -40,6 +41,8 @@ The robot utilizes a **Distributed Compute Model** to balance power efficiency w
 
 ## Remote Access Direction
 The ESP32 should stay on a trusted Wi-Fi network and keep serving the same local API (`/cmd`, `/status`, `/capture`, `/estop`, calibration, OTA). For world-wide control, run `/remote-gateway` on a machine that can reach the robot locally, then expose that gateway through a secure tunnel, VPS, or reverse proxy.
+
+IMU data is exposed without continuous Wi-Fi streaming. `/status` includes low-rate roll, pitch, heading, and readiness fields for the apps. `/imu` returns the latest cached sample with accel, gyro, mag, and attitude values when higher-detail telemetry is needed; `/imu?fmt=bin` returns the same sample as a compact binary frame for host-side polling.
 
 The Android app path is the separate `/mobile-app` PWA:
 1. Run the remote gateway with `ROBOT_BASE_URL`, `ROBOT_API_TOKEN`, and `GATEWAY_TOKEN`.

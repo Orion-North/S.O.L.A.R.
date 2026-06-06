@@ -12,9 +12,11 @@ def clamp(value: float, low: float, high: float) -> float:
 @dataclass(frozen=True)
 class Observation:
     status: dict[str, Any]
+    imu: dict[str, Any] | None = None
     image_jpeg: bytes | None = None
     captured_at: float = field(default_factory=time.time)
     status_latency_ms: float | None = None
+    imu_latency_ms: float | None = None
 
     @property
     def mode(self) -> str:
@@ -27,6 +29,18 @@ class Observation:
     @property
     def torque_enabled(self) -> bool:
         return bool(self.status.get("torque_enabled", False))
+
+    @property
+    def solar_voltage_v(self) -> float | None:
+        for key in ("solar_panel_voltage_v", "solar_voltage_v", "panel_voltage_v", "voltage_v"):
+            value = self.status.get(key)
+            if value is None:
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+        return None
 
 
 @dataclass(frozen=True)
@@ -60,4 +74,23 @@ class Action:
             "speed": f"{action.speed:.3f}",
             "stride": f"{action.stride:.1f}",
             "lift": f"{action.lift:.1f}",
+        }
+
+
+@dataclass(frozen=True)
+class RlServoAction:
+    actions: tuple[float, ...]
+    output_scale: float = 0.35
+
+    def bounded(self) -> "RlServoAction":
+        bounded_actions = tuple(clamp(float(value), -1.0, 1.0) for value in self.actions[:12])
+        if len(bounded_actions) != 12:
+            raise ValueError("RL servo action must contain exactly 12 values")
+        return RlServoAction(actions=bounded_actions, output_scale=clamp(self.output_scale, 0.0, 1.0))
+
+    def as_rl_params(self) -> dict[str, str]:
+        action = self.bounded()
+        return {
+            "a": ",".join(f"{value:.5f}" for value in action.actions),
+            "scale": f"{action.output_scale:.3f}",
         }

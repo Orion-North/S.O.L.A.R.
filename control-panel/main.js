@@ -1,10 +1,29 @@
 // S.O.L.A.R. TACTICAL TERMINAL JavaScript - Refactored for ESP32 Gait Generation
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const desktopHost = window.solarDesktop || null;
   const ipInput = document.getElementById('ip-input');
   const tokenInput = document.getElementById('token-input');
-  let apiToken = localStorage.getItem('solar_api_token') || '';
+  const proxyModeText = document.getElementById('proxy-mode-text');
+  let desktopConfig = {};
+  let desktopInfo = null;
+
+  if(desktopHost) {
+    try {
+      desktopConfig = await desktopHost.readConfig();
+      desktopInfo = await desktopHost.appInfo();
+    } catch(e) {
+      desktopConfig = {};
+    }
+  }
+
+  let apiToken = desktopConfig.apiToken || localStorage.getItem('solar_api_token') || '';
   if(tokenInput) tokenInput.value = apiToken;
+  if(proxyModeText) {
+    proxyModeText.textContent = desktopInfo && desktopInfo.desktopProxy
+      ? `Desktop proxy v${desktopInfo.version}`
+      : 'Browser direct mode';
+  }
   
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach(btn => {
@@ -32,14 +51,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const applyBtn = document.getElementById('apply-ip');
   const camStream = document.getElementById('cam-stream');
+  const cameraPlaceholder = document.getElementById('camera-placeholder');
   const pingBtn = document.getElementById('btn-ping');
   const flashBtn = document.getElementById('btn-flash');
   const liveFeedBtn = document.getElementById('btn-live-feed');
+  const feedStatus = document.getElementById('feed-status');
   const estopBtn = document.getElementById('btn-estop');
+  const clearEstopBtn = document.getElementById('btn-clear-estop');
   const targetIpText = document.querySelector('.target-ip-text');
   const statusBlock = document.querySelector('.block');
   const terminalOut = document.getElementById('terminal-out');
   const telemetryOut = document.getElementById('telemetry-out');
+  const coordHud = document.getElementById('coord-hud');
   const sysTime = document.getElementById('sys-time');
   const calibContainer = document.getElementById('calib-container');
   const saveCalibBtn = document.getElementById('btn-save-calib');
@@ -49,15 +72,65 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!target) return null;
     const base = /^https?:\/\//i.test(target) ? target.replace(/\/+$/, '') : `http://${target}`;
     const query = new URLSearchParams(params);
-    if(apiToken) query.set('token', apiToken);
     const qs = query.toString();
     return `${base}${path}${qs ? `?${qs}` : ''}`;
   }
 
+  function apiHeaders(headers = {}) {
+    const nextHeaders = { ...headers };
+    if(apiToken) nextHeaders['x-solar-token'] = apiToken;
+    return nextHeaders;
+  }
+
+  function responseFromDesktop(result) {
+    const status = Number(result.status || 502);
+    const headers = new Headers();
+    if(result.contentType) headers.set('content-type', result.contentType);
+
+    if(result.bodyBase64) {
+      const raw = atob(result.bodyBase64);
+      const bytes = new Uint8Array(raw.length);
+      for(let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      return new Response(new Blob([bytes], { type: result.contentType || 'application/octet-stream' }), {
+        status,
+        headers
+      });
+    }
+
+    return new Response(result.text || '', { status, headers });
+  }
+
+  async function persistConfig(nextConfig) {
+    desktopConfig = { ...desktopConfig, ...nextConfig };
+    if(Object.prototype.hasOwnProperty.call(nextConfig, 'apiToken')) {
+      localStorage.setItem('solar_api_token', nextConfig.apiToken);
+    }
+    if(Object.prototype.hasOwnProperty.call(nextConfig, 'targetIp')) {
+      localStorage.setItem('solar_target_ip', nextConfig.targetIp);
+    }
+    if(desktopHost) {
+      try { await desktopHost.writeConfig(desktopConfig); } catch(e) {}
+    }
+  }
+
   async function fetchRobot(path, params = {}, options = {}) {
-    const url = buildRobotUrl(path, params);
+    const { targetOverride = null, headers = {}, ...fetchOptions } = options;
+    if(desktopHost) {
+      const result = await desktopHost.requestRobot({
+        target: targetOverride || ipInput.value,
+        token: apiToken,
+        path,
+        params,
+        method: fetchOptions.method || 'GET',
+        timeoutMs: fetchOptions.timeoutMs,
+        responseType: path === '/capture' ? 'blob' : 'text',
+      });
+      return responseFromDesktop(result);
+    }
+
+    const url = buildRobotUrl(path, params, targetOverride);
     if(!url) throw new Error('Missing target');
-    return fetch(url, options);
+    return fetch(url, { ...fetchOptions, headers: apiHeaders(headers) });
   }
 
   function logTerminal(msg) {
@@ -72,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sysTime.innerText = new Date().toLocaleTimeString('en-US', {hour12:false});
   }, 1000);
 
-  const savedIP = localStorage.getItem('solar_target_ip');
+  const savedIP = desktopConfig.targetIp || localStorage.getItem('solar_target_ip');
   if(savedIP) {
     ipInput.value = savedIP;
     updateTargets(savedIP);
@@ -88,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch(buildRobotUrl('/ping', {}, ip), { signal: controller.signal });
+      const res = await fetchRobot('/ping', {}, { signal: controller.signal, targetOverride: ip });
       clearTimeout(timeoutId);
       
       if(res.ok) {
@@ -108,9 +181,8 @@ document.addEventListener('DOMContentLoaded', () => {
   applyBtn.addEventListener('click', () => {
     const ip = ipInput.value.trim();
     apiToken = tokenInput ? tokenInput.value.trim() : apiToken;
-    localStorage.setItem('solar_api_token', apiToken);
     if(ip) {
-      localStorage.setItem('solar_target_ip', ip);
+      persistConfig({ targetIp: ip, apiToken });
       updateTargets(ip);
     }
   });
@@ -120,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!target) return;
 
     logTerminal(`PINGING ${target}...`);
-    pingBtn.innerText = '[TRANSMITTING...]';
+    pingBtn.innerText = 'Transmitting...';
     
     const start = Date.now();
     try {
@@ -130,10 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
       clearTimeout(timeoutId);
       
       const latency = Date.now() - start;
-      pingBtn.innerText = '[PING NODE]';
+      pingBtn.innerText = 'Ping Node';
       logTerminal(`REPLY FROM ${target}: TIME=${latency}ms`);
     } catch (e) {
-      pingBtn.innerText = '[PING NODE]';
+      pingBtn.innerText = 'Ping Node';
       logTerminal(`REQUEST TIMED OUT FOR ${target}`);
     }
   });
@@ -160,19 +232,75 @@ document.addEventListener('DOMContentLoaded', () => {
   let liveFeed = false;
   let liveTimer = null;
   let liveErrorLogged = false;
+  let liveFrameInFlight = false;
+  let liveFrameObjectUrl = null;
+  let liveRequestController = null;
 
   function setLiveFeedState(enabled) {
     liveFeed = enabled;
     clearTimeout(liveTimer);
-    liveFeedBtn.innerText = enabled ? '[STOP FPV]' : '[FPV LIVE]';
-    liveFeedBtn.style.backgroundColor = enabled ? 'rgba(0, 240, 255, 0.2)' : 'transparent';
+    if(!enabled && liveRequestController) {
+      liveRequestController.abort();
+      liveRequestController = null;
+    }
+    liveFeedBtn.innerText = enabled ? 'Stop FPV' : 'FPV Live';
+    liveFeedBtn.classList.toggle('active-state', enabled);
+    if(feedStatus) {
+      feedStatus.textContent = enabled ? 'FPV Pulling' : 'Manual FPV';
+      feedStatus.classList.toggle('blink', enabled);
+    }
     if(enabled) requestCameraFrame();
   }
 
-  function requestCameraFrame() {
+  async function requestCameraFrame() {
     const target = ipInput.value.trim();
     if(!target) return;
-    camStream.src = buildRobotUrl('/capture', { t: Date.now() });
+    if(liveFrameInFlight) return;
+
+    liveFrameInFlight = true;
+    const controller = new AbortController();
+    liveRequestController = controller;
+
+    try {
+      const res = await fetchRobot('/capture', { t: Date.now() }, {
+        cache: 'no-store',
+        signal: controller.signal
+      });
+
+      if(res.status === 429) {
+        scheduleLiveFrame(250);
+        return;
+      }
+      if(!res.ok) throw new Error(`Capture failed: ${res.status}`);
+
+      const blob = await res.blob();
+      if(!blob.type.startsWith('image/')) throw new Error('Capture did not return an image');
+
+      const nextUrl = URL.createObjectURL(blob);
+      const previousUrl = liveFrameObjectUrl;
+      liveFrameObjectUrl = nextUrl;
+      camStream.classList.remove('has-frame');
+      camStream.src = nextUrl;
+      if(previousUrl) URL.revokeObjectURL(previousUrl);
+    } catch(e) {
+      if(controller.signal.aborted) return;
+      if(liveFeed) {
+        if(!liveErrorLogged) {
+          logTerminal("FPV FRAME DROPPED. RETRYING...");
+          liveErrorLogged = true;
+        }
+        scheduleLiveFrame(500);
+      } else {
+        camStream.classList.remove('has-frame');
+        if(cameraPlaceholder) cameraPlaceholder.classList.remove('hidden');
+        statusBlock.classList.add('offline');
+        targetIpText.innerText = `NODE: [OFFLINE]`;
+        logTerminal("ERROR: SENSOR FEED LOST.");
+      }
+    } finally {
+      liveFrameInFlight = false;
+      if(liveRequestController === controller) liveRequestController = null;
+    }
   }
 
   function scheduleLiveFrame(delayMs) {
@@ -182,6 +310,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   camStream.addEventListener('load', () => {
+    camStream.classList.add('has-frame');
+    if(cameraPlaceholder) cameraPlaceholder.classList.add('hidden');
     statusBlock.classList.remove('offline');
     const target = ipInput.value.trim();
     if(target) targetIpText.innerText = `NODE: [${target}]`;
@@ -198,33 +328,68 @@ document.addEventListener('DOMContentLoaded', () => {
       scheduleLiveFrame(350);
       return;
     }
+    camStream.classList.remove('has-frame');
+    if(cameraPlaceholder) cameraPlaceholder.classList.remove('hidden');
     statusBlock.classList.add('offline');
     targetIpText.innerText = `NODE: [OFFLINE]`;
     logTerminal("ERROR: SENSOR FEED LOST.");
   });
+
+  function formatImuStatus(data) {
+      if (!data.imu_ready) return 'OFFLINE';
+      const parts = [];
+      if (data.gyro_ready) parts.push('GYRO OK');
+      if (data.accel_ready) parts.push(`ROLL ${Number(data.roll_deg || 0).toFixed(1)} PITCH ${Number(data.pitch_deg || 0).toFixed(1)}`);
+      else parts.push('ACCEL OFF');
+      if (data.mag_ready) parts.push(`HDG ${Number(data.heading_deg || 0).toFixed(1)}`);
+      else parts.push('MAG OFF');
+      return parts.join(' | ');
+  }
+
+  function formatImuHud(data) {
+      if (!data.imu_ready) return 'IMU TELEMETRY OFFLINE';
+      if (data.accel_ready) {
+        const heading = data.mag_ready ? ` | HDG ${Number(data.heading_deg || 0).toFixed(1)}` : ' | MAG OFF';
+        return `ROLL ${Number(data.roll_deg || 0).toFixed(1)} | PITCH ${Number(data.pitch_deg || 0).toFixed(1)}${heading}`;
+      }
+      if (data.gyro_ready && Array.isArray(data.gyro_dps)) {
+        return `GYRO ${data.gyro_dps.map((v) => Number(v || 0).toFixed(1)).join(' / ')} DPS | ACCEL OFF`;
+      }
+      return 'IMU PARTIAL';
+  }
 
   // --- Telemetry Polling ---
   setInterval(async () => {
       const target = ipInput.value.trim();
       if (!target || statusBlock.classList.contains('offline')) return;
       try {
-          const res = await fetchRobot('/status');
+          const res = await fetchRobot('/status', { fast: 1 });
           if (res.ok) {
               const data = await res.json();
+              estopLatched = Boolean(data.emergency_stop);
+              const voltage = typeof data.solar_panel_voltage_v === 'number'
+                ? `${data.solar_panel_voltage_v.toFixed(2)} V`
+                : 'N/A';
               telemetryOut.textContent = [
                 `> UPTIME: ${(data.uptime_ms/1000).toFixed(1)}s`,
                 `> MODE: ${String(data.mode || 'unknown').toUpperCase()}`,
-                `> NET: ${String(data.wifi_mode || 'unknown').toUpperCase()} ${data.ip ? `(${data.ip})` : ''}`,
-                `> GAIT: ${data.gait_hz} Hz`,
-                `> CAM FPS LIMIT: ${data.camera_fps_limit}`,
-                `> HEAP: ${(data.free_heap/1024).toFixed(1)} KB`,
+                `> LINK: ${desktopHost ? 'DESKTOP PROXY' : 'BROWSER DIRECT'}`,
+                `> IMU: ${formatImuStatus(data)}`,
+                `> SOLAR: ${voltage}`,
                 `> LAST CMD: ${data.last_cmd_ms_ago} ms`,
                 `> TORQUE: ${data.torque_enabled ? 'ON' : 'OFF'}`,
                 `> E-STOP: ${data.emergency_stop ? 'ACTIVE' : 'CLEAR'}`
               ].join('\n');
+              if (typeof data.torque_enabled === 'boolean' && data.torque_enabled !== torqueState) {
+                torqueState = data.torque_enabled;
+                renderTorqueButton();
+              }
+              if(coordHud) {
+                coordHud.textContent = formatImuHud(data);
+              }
           }
       } catch (e) { }
-  }, 1000);
+  }, 1500);
 
   // --- Command Dispatcher ---
   async function dispatchCmd(params) {
@@ -241,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadCalibrationData(ip) {
     try {
-      const res = await fetch(buildRobotUrl('/settings/get', {}, ip));
+      const res = await fetchRobot('/settings/get', {}, { targetOverride: ip });
       currentSettings = await res.json();
       if(!currentSettings.offsets) currentSettings.offsets = new Array(16).fill(0);
       renderCalibrationUI();
@@ -258,8 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeLegs.forEach(leg => {
       let defaultSet = 1;
       if (leg === 'FR') defaultSet = 2;
-      else if (leg === 'BR') defaultSet = 3;
-      else if (leg === 'BL') defaultSet = 4;
+      else if (leg === 'BL') defaultSet = 3;
+      else if (leg === 'BR') defaultSet = 4;
 
       const setVal = currentSettings[`${leg}_SET`] || defaultSet;
       
@@ -352,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!target) return;
 
     logTerminal("TRANSMITTING KINEMATICS TO NVS...");
-    saveCalibBtn.innerText = '[SAVING...]';
+    saveCalibBtn.innerText = 'Saving...';
     
     const params = {};
     activeLegs.forEach(leg => {
@@ -368,34 +533,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const res = await fetchRobot('/settings/set', params, { method: 'POST' });
-      saveCalibBtn.innerText = '[SAVE TO NVS]';
+      saveCalibBtn.innerText = 'Save to NVS';
       if(res.ok) {
           logTerminal("NVS WRITE CONFIRMED.");
           loadCalibrationData(target);
       }
     } catch(e) {
-      saveCalibBtn.innerText = '[SAVE TO NVS]';
+      saveCalibBtn.innerText = 'Save to NVS';
       logTerminal("NVS WRITE FAILED.");
     }
   });
 
   const torqueBtn = document.getElementById('btn-torque');
-  let torqueState = true;
+  let torqueState = false;
+  let estopLatched = false;
   function renderTorqueButton() {
     if(!torqueBtn) return;
-    torqueBtn.innerText = torqueState ? '[DISABLE TORQUE]' : '[ENABLE TORQUE]';
+    torqueBtn.innerText = torqueState ? 'Disable Torque' : 'Enable Torque';
     torqueBtn.style.color = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
     torqueBtn.style.borderColor = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
     torqueBtn.style.backgroundColor = torqueState ? 'transparent' : 'var(--accent-amber)';
   }
+  renderTorqueButton();
   if(torqueBtn) {
     torqueBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
-      torqueState = !torqueState;
-      logTerminal(`SERVO TORQUE: ${torqueState ? 'ENGAGED' : 'DISABLED'}`);
-      renderTorqueButton();
-      try { await fetchRobot('/torque', { state: torqueState ? 1 : 0 }); } catch(e) {}
+      const requestedState = !torqueState;
+      try {
+        const res = await fetchRobot('/torque', { state: requestedState ? 1 : 0 });
+        if(!res.ok) {
+          const body = await res.text();
+          logTerminal(`SERVO TORQUE REJECTED: ${body || res.status}`);
+          renderTorqueButton();
+          return;
+        }
+        torqueState = requestedState;
+        logTerminal(`SERVO TORQUE: ${torqueState ? 'ENGAGED' : 'DISABLED'}`);
+        renderTorqueButton();
+      } catch(e) {
+        logTerminal("SERVO TORQUE COMMAND FAILED.");
+        renderTorqueButton();
+      }
     });
   }
 
@@ -407,7 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if(!target) return;
       inCalibMode = !inCalibMode;
       logTerminal(`CALIBRATION MODE: ${inCalibMode ? 'ON' : 'OFF'}`);
-      calibModeBtn.innerText = inCalibMode ? '[DISABLE CALIB MODE]' : '[ENABLE CALIB MODE]';
+      calibModeBtn.innerText = inCalibMode ? 'Disable Calib Mode' : 'Enable Calib Mode';
       calibModeBtn.style.color = inCalibMode ? 'var(--bg-color)' : 'var(--accent-red)';
       calibModeBtn.style.backgroundColor = inCalibMode ? 'var(--text-main)' : 'transparent';
       calibModeBtn.style.borderColor = inCalibMode ? 'var(--text-main)' : 'var(--accent-red)';
@@ -454,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const target = ipInput.value.trim();
           if(!target) return;
           logTerminal("CAPTURING SENSOR FRAME...");
-          camStream.src = buildRobotUrl('/capture', { t: Date.now() });
+          requestCameraFrame();
       });
   }
 
@@ -481,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activeDir = 'IDLE';
     runningPath = false;
     torqueState = false;
+    estopLatched = true;
     renderTorqueButton();
     logTerminal("EMERGENCY STOP TRANSMITTED.");
     try {
@@ -493,6 +673,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if(estopBtn) {
     estopBtn.addEventListener('click', triggerEmergencyStop);
+  }
+
+  if(clearEstopBtn) {
+    clearEstopBtn.addEventListener('click', async () => {
+      const target = ipInput.value.trim();
+      if(!target) return;
+      logTerminal("CLEARING E-STOP LATCH...");
+      try {
+        const res = await fetchRobot('/estop/clear');
+        if(!res.ok) {
+          const body = await res.text();
+          logTerminal(`E-STOP CLEAR REJECTED: ${body || res.status}`);
+          return;
+        }
+        estopLatched = false;
+        torqueState = false;
+        renderTorqueButton();
+        logTerminal("E-STOP LATCH CLEARED. TORQUE REMAINS DISABLED.");
+      } catch(e) {
+        logTerminal("E-STOP CLEAR FAILED.");
+      }
+    });
   }
 
   function sendDirection(keyName) {
@@ -603,20 +805,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if(!qContainer) return;
       qContainer.innerHTML = '';
       if(pathQueue.length === 0) {
-          qContainer.innerHTML = '<div style="color:var(--text-muted); font-style:italic;">[QUEUE EMPTY]</div>';
+          qContainer.innerHTML = '<div class="queue-empty">Queue empty</div>';
           return;
       }
       pathQueue.forEach((item, index) => {
           const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.justifyContent = 'space-between';
-          row.style.padding = '8px';
-          row.style.marginBottom = '5px';
-          row.style.background = 'rgba(0, 255, 0, 0.05)';
-          row.style.border = '1px solid var(--text-main)';
-          row.style.color = 'var(--text-main)';
-          row.style.fontFamily = 'monospace';
-          row.innerHTML = `<span>${index+1}. ACT: [${item.action}]</span><span>DUR: ${item.duration}ms</span>`;
+          row.className = 'queue-item';
+          row.innerHTML = `<span>${index+1}. ${item.action}</span><span>${item.duration} ms</span>`;
           qContainer.appendChild(row);
       });
   }
@@ -642,7 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if(runningPath || pathQueue.length === 0) return;
           runningPath = true;
           logTerminal("INITIATING AUTONOMOUS PATH SEQUENCE LOOP...");
-          btnPathRun.innerText = "[RUNNING...]";
+          btnPathRun.innerText = "Running...";
 
           while(runningPath) {
               for(let i = 0; i < pathQueue.length; i++) {
@@ -680,7 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
           }
           dispatchCmd({ mode: 'stand' });
-          btnPathRun.innerText = "[EXECUTE LOOP]";
+          btnPathRun.innerText = "Execute Loop";
           logTerminal("PATH SEQUENCE HALTED.");
       });
   }

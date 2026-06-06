@@ -1,0 +1,48 @@
+{
+  "source_step": "C:\\Users\\batuu\\Documents\\SOLAR\\simulation\\source_model\\assembly.step",
+  "coordinate_assumption": "URDF x = CAD +Y forward, URDF y = CAD -X left, URDF z = CAD +Z up",
+  "assembly_size_m": [
+    0.17123769978872236,
+    0.1559564887150625,
+    0.11989077876627766
+  ],
+  "base_box_size_m": [
+    0.12146225655415117,
+    0.11000010945509008,
+    0.0754208549048883
+  ],
+  "hip_station_m": {
+    "x_front_back": 0.0573,
+    "y_left_right": 0.0482,
+    "z": -0.025
+  },
+  "link_lengths_m": {
+    "hip_lateral": 0.032,
+    "thigh": 0.058,
+    "calf": 0.064
+  },
+  "masses_kg": {
+    "base_link": 0.55,
+    "hip_link_each": 0.035,
+    "thigh_link_each": 0.04,
+    "calf_link_each": 0.03,
+    "foot_each": 0.012,
+    "total_proxy": 1.018
+  },
+  "actuator_limits": {
+    "effort_nm": 0.25,
+    "velocity_rad_s": 8.0,
+    "hip_range_rad": [
+      -0.785398,
+      0.785398
+    ],
+    "thigh_range_rad": [
+      -0.523599,
+      1.0472
+    ],
+    "calf_range_rad": [
+      -1.5708,
+      0.523599
+    ]
+  }
+}
