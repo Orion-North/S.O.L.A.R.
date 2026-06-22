@@ -235,6 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let liveFrameInFlight = false;
   let liveFrameObjectUrl = null;
   let liveRequestController = null;
+  let latestImu = null;
 
   function setLiveFeedState(enabled) {
     liveFeed = enabled;
@@ -243,10 +244,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       liveRequestController.abort();
       liveRequestController = null;
     }
-    liveFeedBtn.innerText = enabled ? 'Stop FPV' : 'FPV Live';
+    liveFeedBtn.innerText = enabled ? 'Stop Feed' : 'Live Feed';
     liveFeedBtn.classList.toggle('active-state', enabled);
     if(feedStatus) {
-      feedStatus.textContent = enabled ? 'FPV Pulling' : 'Manual FPV';
+      feedStatus.textContent = enabled ? 'Live Feed Active' : 'Manual Capture';
       feedStatus.classList.toggle('blink', enabled);
     }
     if(enabled) requestCameraFrame();
@@ -335,30 +336,74 @@ document.addEventListener('DOMContentLoaded', async () => {
     logTerminal("ERROR: SENSOR FEED LOST.");
   });
 
+  function normalizeImuData(data) {
+      const accelReady = Boolean(data && data.accel_ready);
+      const gyroReady = Boolean(data && data.gyro_ready);
+      return {
+        ...(data || {}),
+        imu_ready: Boolean(data && Object.prototype.hasOwnProperty.call(data, 'imu_ready') ? data.imu_ready : (accelReady || gyroReady)),
+        accel_ready: accelReady,
+        gyro_ready: gyroReady,
+        received_at: Date.now()
+      };
+  }
+
+  function freshImuFallback(statusData) {
+      if (latestImu && Date.now() - latestImu.received_at < 3000) return latestImu;
+      return normalizeImuData(statusData);
+  }
+
+  function numberList(values, digits) {
+      return Array.isArray(values)
+        ? values.map((v) => Number(v || 0).toFixed(digits)).join(' / ')
+        : '--';
+  }
+
   function formatImuStatus(data) {
-      if (!data.imu_ready) return 'OFFLINE';
+      if (!data.imu_ready) {
+        return data.mpu6050_addr ? 'MPU READ ERROR' : 'MPU OFFLINE';
+      }
       const parts = [];
-      if (data.gyro_ready) parts.push('GYRO OK');
       if (data.accel_ready) parts.push(`ROLL ${Number(data.roll_deg || 0).toFixed(1)} PITCH ${Number(data.pitch_deg || 0).toFixed(1)}`);
       else parts.push('ACCEL OFF');
-      if (data.mag_ready) parts.push(`HDG ${Number(data.heading_deg || 0).toFixed(1)}`);
-      else parts.push('MAG OFF');
+      if (data.gyro_ready) parts.push(`GYRO ${numberList(data.gyro_dps, 1)} DPS`);
+      else parts.push('GYRO OFF');
       return parts.join(' | ');
   }
 
   function formatImuHud(data) {
-      if (!data.imu_ready) return 'IMU TELEMETRY OFFLINE';
-      if (data.accel_ready) {
-        const heading = data.mag_ready ? ` | HDG ${Number(data.heading_deg || 0).toFixed(1)}` : ' | MAG OFF';
-        return `ROLL ${Number(data.roll_deg || 0).toFixed(1)} | PITCH ${Number(data.pitch_deg || 0).toFixed(1)}${heading}`;
+      if (!data.imu_ready) {
+        return data.mpu6050_addr ? 'MPU PRESENT | WAITING FOR SAMPLE' : 'IMU TELEMETRY OFFLINE';
       }
-      if (data.gyro_ready && Array.isArray(data.gyro_dps)) {
-        return `GYRO ${data.gyro_dps.map((v) => Number(v || 0).toFixed(1)).join(' / ')} DPS | ACCEL OFF`;
-      }
-      return 'IMU PARTIAL';
+      const accel = data.accel_ready ? `ACCEL ${numberList(data.accel_g, 3)} G` : 'ACCEL OFF';
+      const gyro = data.gyro_ready ? `GYRO ${numberList(data.gyro_dps, 1)} DPS` : 'GYRO OFF';
+      return `ROLL ${Number(data.roll_deg || 0).toFixed(1)} | PITCH ${Number(data.pitch_deg || 0).toFixed(1)} | ${accel} | ${gyro}`;
+  }
+
+  function imuTelemetryLines(data) {
+      return [
+        `> IMU: ${formatImuStatus(data)}`,
+        `> ACCEL G: ${numberList(data.accel_g, 3)}`,
+        `> GYRO DPS: ${numberList(data.gyro_dps, 1)}`,
+        `> IMU AGE: ${Number(data.age_ms ?? data.imu_age_ms ?? 0)} ms`,
+        `> MPU ADDR: ${data.mpu6050_addr ? `0x${Number(data.mpu6050_addr).toString(16)}` : 'NONE'}`
+      ];
   }
 
   // --- Telemetry Polling ---
+  setInterval(async () => {
+      const target = ipInput.value.trim();
+      if (!target || statusBlock.classList.contains('offline')) return;
+      try {
+          const res = await fetchRobot('/imu', {}, { cache: 'no-store', timeoutMs: 900 });
+          if (!res.ok) throw new Error(`IMU failed: ${res.status}`);
+          latestImu = normalizeImuData(await res.json());
+          if(coordHud) {
+            coordHud.textContent = formatImuHud(latestImu);
+          }
+      } catch (e) { }
+  }, 250);
+
   setInterval(async () => {
       const target = ipInput.value.trim();
       if (!target || statusBlock.classList.contains('offline')) return;
@@ -370,11 +415,12 @@ document.addEventListener('DOMContentLoaded', async () => {
               const voltage = typeof data.solar_panel_voltage_v === 'number'
                 ? `${data.solar_panel_voltage_v.toFixed(2)} V`
                 : 'N/A';
+              const imuData = freshImuFallback(data);
               telemetryOut.textContent = [
                 `> UPTIME: ${(data.uptime_ms/1000).toFixed(1)}s`,
                 `> MODE: ${String(data.mode || 'unknown').toUpperCase()}`,
                 `> LINK: ${desktopHost ? 'DESKTOP PROXY' : 'BROWSER DIRECT'}`,
-                `> IMU: ${formatImuStatus(data)}`,
+                ...imuTelemetryLines(imuData),
                 `> SOLAR: ${voltage}`,
                 `> LAST CMD: ${data.last_cmd_ms_ago} ms`,
                 `> TORQUE: ${data.torque_enabled ? 'ON' : 'OFF'}`,
@@ -385,7 +431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderTorqueButton();
               }
               if(coordHud) {
-                coordHud.textContent = formatImuHud(data);
+                coordHud.textContent = formatImuHud(imuData);
               }
           }
       } catch (e) { }
@@ -409,6 +455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetchRobot('/settings/get', {}, { targetOverride: ip });
       currentSettings = await res.json();
       if(!currentSettings.offsets) currentSettings.offsets = new Array(16).fill(0);
+      if(!currentSettings.motorChannels) currentSettings.motorChannels = Array.from({ length: 16 }, (_, i) => i);
       renderCalibrationUI();
       logTerminal("CALIBRATION MATRIX SYNCED.");
     } catch(e) {
@@ -438,10 +485,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="calib-controls">
             <span>SET:</span>
             <select id="set_${leg}" class="set-select" data-leg="${leg}">
-                <option value="1" ${setVal == 1 ? 'selected' : ''}>SET 1 (0,1,2)</option>
-                <option value="2" ${setVal == 2 ? 'selected' : ''}>SET 2 (3,4,5)</option>
-                <option value="3" ${setVal == 3 ? 'selected' : ''}>SET 3 (6,7,8)</option>
-                <option value="4" ${setVal == 4 ? 'selected' : ''}>SET 4 (9,10,11)</option>
+                <option value="1" ${setVal == 1 ? 'selected' : ''}>SET 1 (M1,M2,M3)</option>
+                <option value="2" ${setVal == 2 ? 'selected' : ''}>SET 2 (M4,M5,M6)</option>
+                <option value="3" ${setVal == 3 ? 'selected' : ''}>SET 3 (M7,M8,M9)</option>
+                <option value="4" ${setVal == 4 ? 'selected' : ''}>SET 4 (M10,M11,M12)</option>
             </select>
             </div>
         </div>
@@ -465,6 +512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const offCon = document.getElementById(`offsets_${leg}`);
     
     const getOff = (m) => currentSettings.offsets[m] || 0;
+    const getChannel = (m) => currentSettings.motorChannels[m] ?? m;
 
     offCon.innerHTML = '';
     ['HIP', 'KNEE', 'FOOT'].forEach((joint, idx) => {
@@ -476,7 +524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       ctrl.style.width = '100%';
       
       ctrl.innerHTML = `
-        <span style="font-size: 0.8rem">${joint} (M${motorId}):</span>
+        <span style="font-size: 0.8rem">${joint} (M${motorId + 1} / CH${getChannel(motorId)}):</span>
         <div style="display:flex; gap:4px;">
             <input type="number" step="0.5" id="off_m${motorId}" value="${getOff(motorId)}" style="width:60px;" data-orig="${getOff(motorId)}" />
             <button class="btn btn-small test-btn" data-motor="${motorId}">TST</button>
@@ -609,13 +657,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  const chargeRestBtn = document.getElementById('btn-charge-rest');
+  if(chargeRestBtn) {
+    chargeRestBtn.addEventListener('click', async () => {
+      const target = ipInput.value.trim();
+      if(!target) return;
+      logTerminal("CHARGE REST: TUCKING LEGS THEN DISABLING TORQUE...");
+      try {
+        const res = await fetchRobot('/charge-rest');
+        if(!res.ok) {
+          const body = await res.text();
+          logTerminal(`CHARGE REST REJECTED: ${body || res.status}`);
+          return;
+        }
+        torqueState = false;
+        renderTorqueButton();
+        logTerminal("CHARGE REST STARTED. TORQUE WILL DISABLE AFTER SETTLE.");
+      } catch(e) {
+        logTerminal("CHARGE REST COMMAND FAILED.");
+      }
+    });
+  }
+
   // --- Emotes (Now powered by ESP32) ---
   const emotes = {
       'btn-turtle': 'flip',
       'btn-dance': 'dance',
       'btn-sit': 'sit',
       'btn-stretch': 'stretch',
-      'btn-wag': 'wag'
+      'btn-wag': 'wag',
+      'btn-wave': 'wave'
   };
   for (const [id, mode] of Object.entries(emotes)) {
       const btn = document.getElementById(id);
@@ -760,6 +831,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (k === 'c') dispatchCmd({ mode: 'sit' });
     if (k === 'x') dispatchCmd({ mode: 'stretch' });
     if (k === 'z') dispatchCmd({ mode: 'wag' });
+    if (k === 'v') dispatchCmd({ mode: 'wave' });
     if (k === 'q' && btnCapture) btnCapture.click();
     
     if(keys[k]) sendDirection(k);
@@ -851,6 +923,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                   } else if (item.action === 'E') {
                       dispatchCmd({ mode: 'dance' });
                       await new Promise(r => setTimeout(r, item.duration)); 
+                  } else if (item.action === 'V') {
+                      dispatchCmd({ mode: 'wave' });
+                      await new Promise(r => setTimeout(r, item.duration));
                   } else if (item.action === 'WAIT') {
                       dispatchCmd({ mode: 'stand' });
                       await new Promise(r => setTimeout(r, item.duration));

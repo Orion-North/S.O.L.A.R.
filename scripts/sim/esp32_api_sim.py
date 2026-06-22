@@ -13,8 +13,9 @@ from urllib.parse import parse_qs, urlparse
 
 
 FIRMWARE_VERSION = "sim-rl-solar-voltage-2026-06-04"
-IMU_BINARY_FORMAT = "<BBHIII12f"
-OBS_BINARY_FORMAT = "<BBBBIIfIII12f"
+IMU_BINARY_FORMAT = "<BBHIII8f"
+OBS_BINARY_FORMAT = "<BBBBIIfIII8f"
+MOTOR_CHANNELS = [8, 11, 5, 9, 10, 4, 6, 7, 3, 2, 1, 0, 12, 13, 14, 15]
 JPEG_1X1 = base64.b64decode(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////"
     "2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQ"
@@ -63,7 +64,6 @@ class SimState:
         t = time.monotonic() - self.started_at
         roll = 2.0 * math.sin(t / 2.0)
         pitch = 1.5 * math.cos(t / 2.7)
-        heading = (t * 8.0) % 360.0
         self.imu_seq += 1
         return {
             "seq": self.imu_seq,
@@ -72,14 +72,10 @@ class SimState:
             "rate_hz": 50,
             "accel_ready": True,
             "gyro_ready": True,
-            "mag_ready": True,
-            "bmp180_ready": False,
             "accel_g": [0.01 * math.sin(t), 0.01 * math.cos(t), 1.0],
             "gyro_dps": [0.2 * self.vx, 0.2 * self.vy, 8.0 * self.wz],
-            "mag_ut": [20.0 + math.sin(t), 5.0, -35.0],
             "roll_deg": roll,
             "pitch_deg": pitch,
-            "heading_deg": heading,
         }
 
 
@@ -139,6 +135,7 @@ class SolarSimHandler(BaseHTTPRequestHandler):
             "/settings/set": self.handle_settings_set,
             "/flash": self.handle_flash,
             "/flash/auto": self.handle_flash_auto,
+            "/charge-rest": self.handle_charge_rest,
             "/estop": self.handle_estop,
             "/estop/clear": self.handle_estop_clear,
             "/i2c": self.handle_i2c,
@@ -215,10 +212,7 @@ class SolarSimHandler(BaseHTTPRequestHandler):
             "imu_ready": True,
             "accel_ready": imu["accel_ready"],
             "gyro_ready": imu["gyro_ready"],
-            "mag_ready": imu["mag_ready"],
-            "bmp180_ready": imu["bmp180_ready"],
             "mpu6050_addr": 104,
-            "l3gd20h_addr": 0,
             "accel_addr": 104,
             "imu_seq": imu["seq"],
             "imu_age_ms": imu["age_ms"],
@@ -226,7 +220,6 @@ class SolarSimHandler(BaseHTTPRequestHandler):
             "accel_g": imu["accel_g"],
             "roll_deg": round(imu["roll_deg"], 1),
             "pitch_deg": round(imu["pitch_deg"], 1),
-            "heading_deg": round(imu["heading_deg"], 1),
         }
 
     def handle_ping(self, params: dict[str, str]) -> None:
@@ -263,12 +256,10 @@ class SolarSimHandler(BaseHTTPRequestHandler):
                     "imu_ready": True,
                     "accel_ready": imu["accel_ready"],
                     "gyro_ready": imu["gyro_ready"],
-                    "mag_ready": imu["mag_ready"],
                     "imu_seq": imu["seq"],
                     "imu_age_ms": imu["age_ms"],
                     "roll_deg": round(imu["roll_deg"], 1),
                     "pitch_deg": round(imu["pitch_deg"], 1),
-                    "heading_deg": round(imu["heading_deg"], 1),
                 }
             )
             return
@@ -279,8 +270,8 @@ class SolarSimHandler(BaseHTTPRequestHandler):
             imu = self.state.imu()
             payload = struct.pack(
                 OBS_BINARY_FORMAT,
-                1,
-                0x04 | 0x08 | 0x10 | 0x20 | (0x01 if self.state.emergency_stop else 0) | (0x02 if self.state.torque_enabled else 0),
+                2,
+                0x04 | 0x08 | 0x10 | (0x01 if self.state.emergency_stop else 0) | (0x02 if self.state.torque_enabled else 0),
                 mode_code(self.state.mode),
                 0,
                 self.state.uptime_ms(),
@@ -291,10 +282,8 @@ class SolarSimHandler(BaseHTTPRequestHandler):
                 imu["age_ms"],
                 *imu["accel_g"],
                 *imu["gyro_dps"],
-                *imu["mag_ut"],
                 imu["roll_deg"],
                 imu["pitch_deg"],
-                imu["heading_deg"],
             )
             self.send_binary(payload)
             return
@@ -318,18 +307,16 @@ class SolarSimHandler(BaseHTTPRequestHandler):
         if params.get("fmt") == "bin":
             payload = struct.pack(
                 IMU_BINARY_FORMAT,
-                1,
-                0x01 | 0x02 | 0x04,
+                2,
+                0x01 | 0x02,
                 50,
                 imu["seq"],
                 imu["sample_ms"],
                 imu["age_ms"],
                 *imu["accel_g"],
                 *imu["gyro_dps"],
-                *imu["mag_ut"],
                 imu["roll_deg"],
                 imu["pitch_deg"],
-                imu["heading_deg"],
             )
             self.send_binary(payload)
             return
@@ -350,7 +337,7 @@ class SolarSimHandler(BaseHTTPRequestHandler):
             return
         mode = params.get("mode")
         if mode is not None:
-            if mode not in {"stand", "idle", "manual", "walk", "sit", "stretch", "wag", "dance", "flip", "rl"}:
+            if mode not in {"stand", "idle", "manual", "walk", "sit", "stretch", "wag", "dance", "flip", "wave", "rl"}:
                 self.send_text(HTTPStatus.BAD_REQUEST, "Invalid mode")
                 return
             self.state.mode = mode
@@ -429,7 +416,7 @@ class SolarSimHandler(BaseHTTPRequestHandler):
         self.send_text(HTTPStatus.OK, "SEQ ACK")
 
     def handle_settings_get(self, params: dict[str, str]) -> None:
-        self.send_json({**self.state.leg_sets, "offsets": self.state.offsets})
+        self.send_json({**self.state.leg_sets, "offsets": self.state.offsets, "motorChannels": MOTOR_CHANNELS})
 
     def handle_settings_set(self, params: dict[str, str]) -> None:
         for key in self.state.leg_sets:
@@ -448,6 +435,19 @@ class SolarSimHandler(BaseHTTPRequestHandler):
     def handle_flash_auto(self, params: dict[str, str]) -> None:
         self.state.flash = False
         self.send_text(HTTPStatus.OK, "FLASH AUTO")
+
+    def handle_charge_rest(self, params: dict[str, str]) -> None:
+        if self.state.emergency_stop:
+            self.send_text(HTTPStatus.LOCKED, "Emergency stop active; call /estop/clear first")
+            return
+        self.state.mode = "charge_rest"
+        self.state.vx = 0.0
+        self.state.vy = 0.0
+        self.state.wz = 0.0
+        self.state.calibration_mode = False
+        self.state.torque_enabled = False
+        self.state.last_cmd_at = time.monotonic()
+        self.send_text(HTTPStatus.OK, "CHARGE REST STARTED")
 
     def handle_estop(self, params: dict[str, str]) -> None:
         self.state.emergency_stop = True
@@ -474,7 +474,6 @@ class SolarSimHandler(BaseHTTPRequestHandler):
                 "imu_pins_scan": "I2C SCAN IMU PINS 13/2: 0x68",
                 "shared_pins_scan": "I2C SCAN SHARED PINS 14/15: 0x40",
                 "mpu6050_addr": 104,
-                "bmp180_ready": False,
             }
         )
 
@@ -491,6 +490,8 @@ def mode_code(mode: str) -> int:
         "dance": 8,
         "flip": 9,
         "rl": 10,
+        "wave": 11,
+        "charge_rest": 12,
     }.get(mode, 0)
 
 

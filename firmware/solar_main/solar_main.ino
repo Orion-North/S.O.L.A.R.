@@ -112,28 +112,19 @@ float offsets[16] = {
 float currentAngle[16];
 float targetAngle[16];
 
-const char* FIRMWARE_VERSION = "rl-solar-voltage-2026-06-02";
+const char* FIRMWARE_VERSION = "rl-solar-ota-imu-2026-06-10-1408";
 String sysDebug = String("OS Boot OK\nFW: ") + FIRMWARE_VERSION + "\n";
 
-// --- ADAFRUIT 10-DOF IMU (L3GD20H + LSM303D/LSM303DLHC + BMP180) ---
-const uint8_t LSM303D_ADDR_PRIMARY = 0x1D;
-const uint8_t LSM303D_ADDR_SECONDARY = 0x1E;
-const uint8_t LSM303DLHC_ACCEL_ADDR = 0x19;
-const uint8_t LSM303DLHC_MAG_ADDR = 0x1E;
-const uint8_t L3GD20H_ADDR_PRIMARY = 0x6B;
-const uint8_t L3GD20H_ADDR_SECONDARY = 0x6A;
+// --- MPU-6050 IMU (accelerometer + gyroscope) ---
 const uint8_t MPU6050_ADDR_PRIMARY = 0x68;
 const uint8_t MPU6050_ADDR_SECONDARY = 0x69;
-const uint8_t BMP180_ADDR = 0x77;
 const uint16_t IMU_SAMPLE_INTERVAL_MS = 20; // 50 Hz local sampling, exposed on request only.
-const uint8_t IMU_BINARY_VERSION = 1;
-const uint8_t OBS_BINARY_VERSION = 1;
+const uint8_t IMU_BINARY_VERSION = 2;
+const uint8_t OBS_BINARY_VERSION = 2;
 
 struct ImuTelemetry {
   bool accelReady = false;
   bool gyroReady = false;
-  bool magReady = false;
-  bool bmpReady = false;
   uint32_t seq = 0;
   unsigned long sampledAt = 0;
   float ax = 0;
@@ -142,22 +133,13 @@ struct ImuTelemetry {
   float gx = 0;
   float gy = 0;
   float gz = 0;
-  float mx = 0;
-  float my = 0;
-  float mz = 0;
   float roll = 0;
   float pitch = 0;
-  float heading = 0;
 };
 
 ImuTelemetry imuTelemetry;
 TwoWire* imuWire = &Wire1;
-uint8_t lsm303dAddr = 0;
-uint8_t lsm303dlhcAccelAddr = 0;
-uint8_t lsm303dlhcMagAddr = 0;
-uint8_t l3gd20hAddr = 0;
 uint8_t mpu6050Addr = 0;
-bool bmp180Ready = false;
 
 struct __attribute__((packed)) ImuBinaryFrame {
   uint8_t version;
@@ -172,12 +154,8 @@ struct __attribute__((packed)) ImuBinaryFrame {
   float gx;
   float gy;
   float gz;
-  float mx;
-  float my;
-  float mz;
   float roll;
   float pitch;
-  float heading;
 };
 
 struct __attribute__((packed)) ObsBinaryFrame {
@@ -197,12 +175,8 @@ struct __attribute__((packed)) ObsBinaryFrame {
   float gx;
   float gy;
   float gz;
-  float mx;
-  float my;
-  float mz;
   float roll;
   float pitch;
-  float heading;
 };
 
 // --- MOTOR MAPPING (Dynamic Sets) ---
@@ -223,6 +197,14 @@ const int SET_PINS[4][3] = {
   {9, 10, 11}  // Set 4
 };
 
+const int MOTOR_TO_PWM_CHANNEL[16] = {
+  8, 11, 5,    // Body motors 1-3
+  9, 10, 4,    // Body motors 4-6
+  6, 7, 3,     // Body motors 7-9
+  2, 1, 0,     // Body motors 10-12
+  12, 13, 14, 15
+};
+
 void applyLegSets() {
   if (FL_SET < 1 || FL_SET > 4) FL_SET = 1;
   if (FR_SET < 1 || FR_SET > 4) FR_SET = 2;
@@ -233,6 +215,11 @@ void applyLegSets() {
   FR_HIP = SET_PINS[FR_SET - 1][0]; FR_KNEE = SET_PINS[FR_SET - 1][1]; FR_FOOT = SET_PINS[FR_SET - 1][2];
   BL_HIP = SET_PINS[BL_SET - 1][0]; BL_KNEE = SET_PINS[BL_SET - 1][1]; BL_FOOT = SET_PINS[BL_SET - 1][2];
   BR_HIP = SET_PINS[BR_SET - 1][0]; BR_KNEE = SET_PINS[BR_SET - 1][1]; BR_FOOT = SET_PINS[BR_SET - 1][2];
+}
+
+int motorToPwmChannel(int motorId) {
+  if (motorId < 0 || motorId >= 16) return motorId;
+  return MOTOR_TO_PWM_CHANNEL[motorId];
 }
 
 const int STATUS_LED_PIN = 33; // AI-Thinker small onboard red LED, active-low
@@ -267,14 +254,19 @@ bool usingFallbackAp = false;
 bool runningTestSeq = false;
 bool emergencyStop = false;
 bool cameraReady = false;
+bool chargeRestPendingPowerDown = false;
+unsigned long chargeRestStartedAt = 0;
 unsigned long lastAliveBlink = 0;
 bool aliveBlinkState = false;
 unsigned long lastSolarPanelSampleMs = 0;
 int cachedSolarPanelAdcMv = -1;
 float cachedSolarPanelVoltage = -1.0f;
 const uint16_t SOLAR_PANEL_SAMPLE_INTERVAL_MS = 250;
+const uint16_t CHARGE_REST_SETTLE_MS = 1600;
 const int SERVO_PULSE_DEADBAND = 2;
 int lastServoPulse[16];
+bool otaUploadOk = false;
+String otaUploadMessage = "No OTA upload started";
 
 void writeServoPulse(uint8_t channel, uint16_t pulse, bool force = false);
 
@@ -308,7 +300,7 @@ float boundedArg(const String& name, float fallback, float minVal, float maxVal)
 bool isAllowedMode(const String& mode) {
   return mode == "stand" || mode == "idle" || mode == "manual" || mode == "walk" ||
          mode == "sit" || mode == "stretch" || mode == "wag" || mode == "dance" ||
-         mode == "flip" || mode == "rl";
+         mode == "flip" || mode == "wave" || mode == "rl";
 }
 
 bool solarPanelAdcEnabled() {
@@ -353,6 +345,7 @@ void engageEmergencyStop() {
   emergencyStop = true;
   torqueEnabled = false;
   calibrationMode = false;
+  chargeRestPendingPowerDown = false;
   cmd_mode = "stand";
   cmd_vx = 0;
   cmd_vy = 0;
@@ -456,6 +449,33 @@ bool detectedRead8(uint8_t addr, uint8_t reg, uint8_t &value) {
   return detectI2C(*imuWire, addr) && i2cRead8(addr, reg, value);
 }
 
+uint8_t detectSelectedMpu6050Address() {
+  uint8_t who = 0;
+  if (detectedRead8(MPU6050_ADDR_PRIMARY, 0x75, who) && (who == 0x68 || who == 0x70 || who == 0x71 || who == 0x73 || who == 0x75)) {
+    return MPU6050_ADDR_PRIMARY;
+  }
+  if (detectedRead8(MPU6050_ADDR_SECONDARY, 0x75, who) && (who == 0x68 || who == 0x70 || who == 0x71 || who == 0x73 || who == 0x75)) {
+    return MPU6050_ADDR_SECONDARY;
+  }
+  if (detectI2C(*imuWire, MPU6050_ADDR_PRIMARY)) {
+    return MPU6050_ADDR_PRIMARY;
+  }
+  if (detectI2C(*imuWire, MPU6050_ADDR_SECONDARY)) {
+    return MPU6050_ADDR_SECONDARY;
+  }
+  return 0;
+}
+
+bool configureMpu6050(uint8_t addr) {
+  if (addr == 0) return false;
+  bool ok = i2cWrite8(addr, 0x6B, 0x00); // Wake from sleep.
+  delay(10);
+  ok = i2cWrite8(addr, 0x1A, 0x03) && ok; // DLPF around 44 Hz.
+  ok = i2cWrite8(addr, 0x1B, 0x08) && ok; // Gyro +/-500 dps.
+  ok = i2cWrite8(addr, 0x1C, 0x00) && ok; // Accel +/-2 g.
+  return ok;
+}
+
 String scanI2CBus(TwoWire& bus, const char* label) {
   String result = "I2C SCAN ";
   result += label;
@@ -483,22 +503,13 @@ String scanI2CBus(TwoWire& bus, const char* label) {
 }
 
 bool busHasImuDevice(TwoWire& bus) {
-  return detectI2C(bus, LSM303D_ADDR_PRIMARY) ||
-         detectI2C(bus, LSM303D_ADDR_SECONDARY) ||
-         detectI2C(bus, LSM303DLHC_ACCEL_ADDR) ||
-         detectI2C(bus, L3GD20H_ADDR_PRIMARY) ||
-         detectI2C(bus, L3GD20H_ADDR_SECONDARY) ||
-         detectI2C(bus, MPU6050_ADDR_PRIMARY) ||
-         detectI2C(bus, MPU6050_ADDR_SECONDARY) ||
-         detectI2C(bus, BMP180_ADDR);
+  return detectI2C(bus, MPU6050_ADDR_PRIMARY) ||
+         detectI2C(bus, MPU6050_ADDR_SECONDARY);
 }
 
 int imuMotionScore(TwoWire& bus) {
   int score = 0;
   if (detectI2C(bus, MPU6050_ADDR_PRIMARY) || detectI2C(bus, MPU6050_ADDR_SECONDARY)) score += 4;
-  if (detectI2C(bus, L3GD20H_ADDR_PRIMARY) || detectI2C(bus, L3GD20H_ADDR_SECONDARY)) score += 3;
-  if (detectI2C(bus, LSM303DLHC_ACCEL_ADDR) || detectI2C(bus, LSM303D_ADDR_PRIMARY)) score += 2;
-  if (detectI2C(bus, LSM303DLHC_MAG_ADDR)) score += 1;
   return score;
 }
 
@@ -519,20 +530,13 @@ String i2cDiagnosticsJson() {
   json += "\"shared_scl_level\":" + String(digitalRead(I2C_SCL)) + ",";
   json += "\"imu_pins_scan\":\"" + scanI2CBus(Wire1, "IMU PINS 13/2") + "\",";
   json += "\"shared_pins_scan\":\"" + scanI2CBus(Wire, "SHARED PINS 14/15") + "\",";
-  json += "\"lsm303d_addr\":" + String(lsm303dAddr) + ",";
-  json += "\"lsm303dlhc_accel_addr\":" + String(lsm303dlhcAccelAddr) + ",";
-  json += "\"lsm303dlhc_mag_addr\":" + String(lsm303dlhcMagAddr) + ",";
-  json += "\"l3gd20h_addr\":" + String(l3gd20hAddr) + ",";
-  json += "\"mpu6050_addr\":" + String(mpu6050Addr) + ",";
-  json += "\"bmp180_ready\":" + String(bmp180Ready ? "true" : "false");
+  json += "\"mpu6050_addr\":" + String(mpu6050Addr);
   json += "}";
   json.replace("\n", "\\n");
   return json;
 }
 
 void initImuSensors() {
-  uint8_t who = 0;
-
   sysDebug += scanI2CBus(Wire1, "IMU PINS 13/2");
   sysDebug += scanI2CBus(Wire, "SHARED PINS 14/15");
 
@@ -543,142 +547,62 @@ void initImuSensors() {
     sysDebug += "IMU BUS: ";
     sysDebug += imuBusName();
     sysDebug += " MOTION_SCORE WIRE1=" + String(wire1MotionScore) + " WIRE=" + String(wireMotionScore) + "\n";
-  } else if (busHasImuDevice(Wire1)) {
-    imuWire = &Wire1;
-    sysDebug += "IMU BUS: PINS 13/2 BMP_ONLY\n";
-  } else if (busHasImuDevice(Wire)) {
-    imuWire = &Wire;
-    sysDebug += "IMU BUS: SHARED PINS 14/15 BMP_ONLY\n";
   } else {
     imuWire = &Wire1;
-    sysDebug += "IMU BUS: NO IMU ADDRESSES FOUND\n";
+    sysDebug += "IMU BUS: NO MPU6050 ADDRESSES FOUND\n";
   }
 
-  who = 0;
-  lsm303dAddr = 0;
-  lsm303dlhcAccelAddr = 0;
-  lsm303dlhcMagAddr = 0;
-  l3gd20hAddr = 0;
   mpu6050Addr = 0;
-  bmp180Ready = false;
   lockState();
   imuTelemetry.accelReady = false;
   imuTelemetry.gyroReady = false;
-  imuTelemetry.magReady = false;
-  imuTelemetry.bmpReady = false;
   unlockState();
 
-  if (detectedRead8(MPU6050_ADDR_PRIMARY, 0x75, who) && (who == 0x68 || who == 0x70 || who == 0x71 || who == 0x73 || who == 0x75)) {
-    mpu6050Addr = MPU6050_ADDR_PRIMARY;
-  } else if (detectedRead8(MPU6050_ADDR_SECONDARY, 0x75, who) && (who == 0x68 || who == 0x70 || who == 0x71 || who == 0x73 || who == 0x75)) {
-    mpu6050Addr = MPU6050_ADDR_SECONDARY;
-  } else if (detectI2C(*imuWire, MPU6050_ADDR_PRIMARY)) {
-    mpu6050Addr = MPU6050_ADDR_PRIMARY;
-  } else if (detectI2C(*imuWire, MPU6050_ADDR_SECONDARY)) {
-    mpu6050Addr = MPU6050_ADDR_SECONDARY;
-  }
+  mpu6050Addr = detectSelectedMpu6050Address();
 
   if (mpu6050Addr != 0) {
-    i2cWrite8(mpu6050Addr, 0x6B, 0x00); // Wake from sleep.
-    delay(10);
-    i2cWrite8(mpu6050Addr, 0x1A, 0x03); // DLPF around 44 Hz.
-    i2cWrite8(mpu6050Addr, 0x1B, 0x08); // Gyro +/-500 dps.
-    i2cWrite8(mpu6050Addr, 0x1C, 0x00); // Accel +/-2 g.
-    lockState();
-    imuTelemetry.accelReady = true;
-    imuTelemetry.gyroReady = true;
-    unlockState();
-    sysDebug += "IMU: MPU6050/MPU9X50 FOUND AT 0x" + String(mpu6050Addr, HEX) + "\n";
-  }
-
-  if (detectedRead8(LSM303D_ADDR_PRIMARY, 0x0F, who) && who == 0x49) {
-    lsm303dAddr = LSM303D_ADDR_PRIMARY;
-  } else if (detectedRead8(LSM303D_ADDR_SECONDARY, 0x0F, who) && who == 0x49) {
-    lsm303dAddr = LSM303D_ADDR_SECONDARY;
-  }
-
-  if (lsm303dAddr != 0) {
-    i2cWrite8(lsm303dAddr, 0x20, 0x57); // Accel: 50 Hz, X/Y/Z enabled.
-    i2cWrite8(lsm303dAddr, 0x21, 0x00); // Accel: +/-2 g.
-    i2cWrite8(lsm303dAddr, 0x24, 0x64); // Mag: high resolution, 50 Hz.
-    i2cWrite8(lsm303dAddr, 0x25, 0x20); // Mag: +/-4 gauss.
-    i2cWrite8(lsm303dAddr, 0x26, 0x00); // Mag: continuous conversion.
-    lockState();
-    imuTelemetry.accelReady = true;
-    imuTelemetry.magReady = true;
-    unlockState();
-    sysDebug += "IMU: LSM303D FOUND AT 0x" + String(lsm303dAddr, HEX) + "\n";
-  } else {
-    bool accelFound = detectI2C(*imuWire, LSM303DLHC_ACCEL_ADDR);
-    bool magFound = detectI2C(*imuWire, LSM303DLHC_MAG_ADDR);
-
-    if (accelFound) {
-      lsm303dlhcAccelAddr = LSM303DLHC_ACCEL_ADDR;
-      i2cWrite8(lsm303dlhcAccelAddr, 0x20, 0x57); // Accel: 100 Hz, X/Y/Z enabled.
-      i2cWrite8(lsm303dlhcAccelAddr, 0x23, 0x08); // Accel: high-resolution, +/-2 g.
+    if (configureMpu6050(mpu6050Addr)) {
       lockState();
       imuTelemetry.accelReady = true;
+      imuTelemetry.gyroReady = true;
       unlockState();
-      sysDebug += "IMU: LSM303DLHC ACCEL FOUND AT 0x19\n";
+      sysDebug += "IMU: MPU6050 FOUND AT 0x" + String(mpu6050Addr, HEX) + "\n";
     } else {
-      sysDebug += "IMU: LSM303D/LSM303DLHC ACCEL MISSING\n";
+      sysDebug += "IMU: MPU6050 CONFIG FAILED AT 0x" + String(mpu6050Addr, HEX) + "\n";
+      mpu6050Addr = 0;
     }
-
-    if (magFound) {
-      lsm303dlhcMagAddr = LSM303DLHC_MAG_ADDR;
-      i2cWrite8(lsm303dlhcMagAddr, 0x00, 0x14); // Mag: 15 Hz.
-      i2cWrite8(lsm303dlhcMagAddr, 0x01, 0x20); // Mag: +/-1.3 gauss.
-      i2cWrite8(lsm303dlhcMagAddr, 0x02, 0x00); // Mag: continuous conversion.
-      lockState();
-      imuTelemetry.magReady = true;
-      unlockState();
-      sysDebug += "IMU: LSM303DLHC MAG FOUND AT 0x1E\n";
-    } else {
-      sysDebug += "IMU: LSM303D/LSM303DLHC MAG MISSING\n";
-    }
-  }
-
-  who = 0;
-  if (detectedRead8(L3GD20H_ADDR_PRIMARY, 0x0F, who) && (who == 0xD7 || who == 0xD4)) {
-    l3gd20hAddr = L3GD20H_ADDR_PRIMARY;
-  } else if (detectedRead8(L3GD20H_ADDR_SECONDARY, 0x0F, who) && (who == 0xD7 || who == 0xD4)) {
-    l3gd20hAddr = L3GD20H_ADDR_SECONDARY;
-  }
-
-  if (l3gd20hAddr != 0) {
-    i2cWrite8(l3gd20hAddr, 0x20, 0x0F); // Normal power, 95 Hz, X/Y/Z enabled.
-    i2cWrite8(l3gd20hAddr, 0x23, 0x10); // +/-500 dps for useful robot motion range.
-    lockState();
-    imuTelemetry.gyroReady = true;
-    unlockState();
-    sysDebug += "IMU: L3GD20H FOUND AT 0x" + String(l3gd20hAddr, HEX) + "\n";
   } else {
-    sysDebug += "IMU: L3GD20H MISSING\n";
+    sysDebug += "IMU: MPU6050 MISSING\n";
   }
+}
 
-  if (detectedRead8(BMP180_ADDR, 0xD0, who) && who == 0x55) {
-    bmp180Ready = true;
-    lockState();
-    imuTelemetry.bmpReady = true;
-    unlockState();
-    sysDebug += "IMU: BMP180 FOUND AT 0x77\n";
-  } else {
-    sysDebug += "IMU: BMP180 MISSING OR NOT PRIORITIZED\n";
-  }
+void retryImuDetection() {
+  int wire1MotionScore = imuMotionScore(Wire1);
+  int wireMotionScore = imuMotionScore(Wire);
+  if (wire1MotionScore <= 0 && wireMotionScore <= 0) return;
+
+  imuWire = wire1MotionScore >= wireMotionScore ? &Wire1 : &Wire;
+  uint8_t detectedAddr = detectSelectedMpu6050Address();
+  if (detectedAddr == 0 || !configureMpu6050(detectedAddr)) return;
+
+  mpu6050Addr = detectedAddr;
+  lockState();
+  imuTelemetry.accelReady = true;
+  imuTelemetry.gyroReady = true;
+  imuTelemetry.sampledAt = millis();
+  unlockState();
+  sysDebug += "IMU: MPU6050 RECOVERED AT 0x" + String(mpu6050Addr, HEX) + " ON " + imuBusName() + "\n";
 }
 
 void sampleImu() {
   ImuTelemetry next;
   bool accelOk = false;
-  bool magOk = false;
   bool gyroOk = false;
   uint8_t raw[6];
 
   lockState();
   next = imuTelemetry;
   unlockState();
-
-  next.bmpReady = bmp180Ready;
 
   if (mpu6050Addr != 0 && i2cReadBytes(mpu6050Addr, 0x3B, raw, 6)) {
     int16_t axRaw = be16(&raw[0]);
@@ -688,40 +612,6 @@ void sampleImu() {
     next.ay = ayRaw / 16384.0f;
     next.az = azRaw / 16384.0f;
     accelOk = true;
-  } else if (lsm303dAddr != 0 && i2cReadBytes(lsm303dAddr, 0x28 | 0x80, raw, 6)) {
-    int16_t axRaw = le16(&raw[0]);
-    int16_t ayRaw = le16(&raw[2]);
-    int16_t azRaw = le16(&raw[4]);
-    next.ax = axRaw * 0.000061f; // g at +/-2 g.
-    next.ay = ayRaw * 0.000061f;
-    next.az = azRaw * 0.000061f;
-    accelOk = true;
-  } else if (lsm303dlhcAccelAddr != 0 && i2cReadBytes(lsm303dlhcAccelAddr, 0x28 | 0x80, raw, 6)) {
-    int16_t axRaw = le16(&raw[0]) >> 4;
-    int16_t ayRaw = le16(&raw[2]) >> 4;
-    int16_t azRaw = le16(&raw[4]) >> 4;
-    next.ax = axRaw * 0.001f; // g at +/-2 g.
-    next.ay = ayRaw * 0.001f;
-    next.az = azRaw * 0.001f;
-    accelOk = true;
-  }
-
-  if (lsm303dAddr != 0 && i2cReadBytes(lsm303dAddr, 0x08 | 0x80, raw, 6)) {
-    int16_t mxRaw = le16(&raw[0]);
-    int16_t myRaw = le16(&raw[2]);
-    int16_t mzRaw = le16(&raw[4]);
-    next.mx = mxRaw * 0.016f; // microtesla at +/-4 gauss.
-    next.my = myRaw * 0.016f;
-    next.mz = mzRaw * 0.016f;
-    magOk = true;
-  } else if (lsm303dlhcMagAddr != 0 && i2cReadBytes(lsm303dlhcMagAddr, 0x03, raw, 6)) {
-    int16_t mxRaw = be16(&raw[0]);
-    int16_t mzRaw = be16(&raw[2]);
-    int16_t myRaw = be16(&raw[4]);
-    next.mx = mxRaw * 0.092f; // microtesla at +/-1.3 gauss.
-    next.my = myRaw * 0.092f;
-    next.mz = mzRaw * 0.102f;
-    magOk = true;
   }
 
   if (mpu6050Addr != 0 && i2cReadBytes(mpu6050Addr, 0x43, raw, 6)) {
@@ -732,14 +622,6 @@ void sampleImu() {
     next.gy = gyRaw / 65.5f;
     next.gz = gzRaw / 65.5f;
     gyroOk = true;
-  } else if (l3gd20hAddr != 0 && i2cReadBytes(l3gd20hAddr, 0x28 | 0x80, raw, 6)) {
-    int16_t gxRaw = le16(&raw[0]);
-    int16_t gyRaw = le16(&raw[2]);
-    int16_t gzRaw = le16(&raw[4]);
-    next.gx = gxRaw * 0.0175f; // dps at +/-500 dps.
-    next.gy = gyRaw * 0.0175f;
-    next.gz = gzRaw * 0.0175f;
-    gyroOk = true;
   }
 
   if (accelOk) {
@@ -747,20 +629,10 @@ void sampleImu() {
     float pitchRad = atan2(-next.ax, sqrt(next.ay * next.ay + next.az * next.az));
     next.roll = rollRad * RAD_TO_DEG;
     next.pitch = pitchRad * RAD_TO_DEG;
-
-    if (magOk) {
-      float xh = next.mx * cos(pitchRad) + next.mz * sin(pitchRad);
-      float yh = next.mx * sin(rollRad) * sin(pitchRad) +
-                 next.my * cos(rollRad) -
-                 next.mz * sin(rollRad) * cos(pitchRad);
-      next.heading = atan2(-yh, xh) * RAD_TO_DEG;
-      if (next.heading < 0) next.heading += 360.0f;
-    }
   }
 
-  next.accelReady = (mpu6050Addr != 0 || lsm303dAddr != 0 || lsm303dlhcAccelAddr != 0) && accelOk;
-  next.magReady = (lsm303dAddr != 0 || lsm303dlhcMagAddr != 0) && magOk;
-  next.gyroReady = (mpu6050Addr != 0 || l3gd20hAddr != 0) && gyroOk;
+  next.accelReady = (mpu6050Addr != 0) && accelOk;
+  next.gyroReady = (mpu6050Addr != 0) && gyroOk;
   next.sampledAt = millis();
   next.seq++;
 
@@ -769,33 +641,74 @@ void sampleImu() {
   unlockState();
 }
 
-String imuJson(const ImuTelemetry &imu) {
-  String json = "{";
-  json += "\"seq\":" + String(imu.seq) + ",";
-  json += "\"sample_ms\":" + String(imu.sampledAt) + ",";
-  json += "\"age_ms\":" + String(millis() - imu.sampledAt) + ",";
-  json += "\"rate_hz\":50,";
-  json += "\"accel_ready\":" + String(imu.accelReady ? "true" : "false") + ",";
-  json += "\"gyro_ready\":" + String(imu.gyroReady ? "true" : "false") + ",";
-  json += "\"mag_ready\":" + String(imu.magReady ? "true" : "false") + ",";
-  json += "\"bmp180_ready\":" + String(imu.bmpReady ? "true" : "false") + ",";
-  json += "\"accel_g\":[" + String(imu.ax, 4) + "," + String(imu.ay, 4) + "," + String(imu.az, 4) + "],";
-  json += "\"gyro_dps\":[" + String(imu.gx, 2) + "," + String(imu.gy, 2) + "," + String(imu.gz, 2) + "],";
-  json += "\"mag_ut\":[" + String(imu.mx, 2) + "," + String(imu.my, 2) + "," + String(imu.mz, 2) + "],";
-  json += "\"roll_deg\":" + String(imu.roll, 1) + ",";
-  json += "\"pitch_deg\":" + String(imu.pitch, 1) + ",";
-  json += "\"heading_deg\":" + String(imu.heading, 1);
-  json += "}";
-  return json;
+const char* boolJson(bool value) {
+  return value ? "true" : "false";
+}
+
+void formatNullableFloat(char* out, size_t outSize, bool enabled, float value, uint8_t decimals) {
+  if (!enabled) {
+    snprintf(out, outSize, "null");
+    return;
+  }
+  snprintf(out, outSize, "%.*f", decimals, value);
+}
+
+void formatNullableInt(char* out, size_t outSize, bool enabled, int value) {
+  if (!enabled) {
+    snprintf(out, outSize, "null");
+    return;
+  }
+  snprintf(out, outSize, "%d", value);
+}
+
+void sendJsonBuffer(const char* json) {
+  WiFiClient client = server.client();
+  client.printf(
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: application/json\r\n"
+    "Content-Length: %u\r\n"
+    "Access-Control-Allow-Origin: *\r\n"
+    "Cache-Control: no-store\r\n"
+    "Connection: close\r\n"
+    "\r\n",
+    strlen(json)
+  );
+  client.print(json);
+}
+
+void sendImuJson(const ImuTelemetry &imu) {
+  char json[512];
+  snprintf(
+    json,
+    sizeof(json),
+    "{\"seq\":%lu,\"sample_ms\":%lu,\"age_ms\":%lu,\"rate_hz\":50,"
+    "\"imu_ready\":%s,\"mpu6050_addr\":%u,\"accel_ready\":%s,\"gyro_ready\":%s,"
+    "\"accel_g\":[%.4f,%.4f,%.4f],\"gyro_dps\":[%.2f,%.2f,%.2f],"
+    "\"roll_deg\":%.1f,\"pitch_deg\":%.1f}",
+    (unsigned long)imu.seq,
+    (unsigned long)imu.sampledAt,
+    (unsigned long)(millis() - imu.sampledAt),
+    boolJson(imu.accelReady || imu.gyroReady),
+    (unsigned)mpu6050Addr,
+    boolJson(imu.accelReady),
+    boolJson(imu.gyroReady),
+    imu.ax,
+    imu.ay,
+    imu.az,
+    imu.gx,
+    imu.gy,
+    imu.gz,
+    imu.roll,
+    imu.pitch
+  );
+  sendJsonBuffer(json);
 }
 
 void sendImuBinary(const ImuTelemetry &imu) {
   ImuBinaryFrame frame;
   frame.version = IMU_BINARY_VERSION;
   frame.flags = (imu.accelReady ? 0x01 : 0) |
-                (imu.gyroReady ? 0x02 : 0) |
-                (imu.magReady ? 0x04 : 0) |
-                (imu.bmpReady ? 0x08 : 0);
+                (imu.gyroReady ? 0x02 : 0);
   frame.rateHz = 50;
   frame.seq = imu.seq;
   frame.sampleMs = imu.sampledAt;
@@ -806,12 +719,8 @@ void sendImuBinary(const ImuTelemetry &imu) {
   frame.gx = imu.gx;
   frame.gy = imu.gy;
   frame.gz = imu.gz;
-  frame.mx = imu.mx;
-  frame.my = imu.my;
-  frame.mz = imu.mz;
   frame.roll = imu.roll;
   frame.pitch = imu.pitch;
-  frame.heading = imu.heading;
 
   WiFiClient client = server.client();
   client.printf(
@@ -838,6 +747,8 @@ uint8_t modeCode(const String& mode) {
   if (mode == "dance") return 8;
   if (mode == "flip") return 9;
   if (mode == "rl") return 10;
+  if (mode == "wave") return 11;
+  if (mode == "charge_rest") return 12;
   return 0;
 }
 
@@ -848,9 +759,7 @@ void sendObsBinary(const String& mode, unsigned long lastCmdAgo, bool estop, boo
                 (torque ? 0x02 : 0) |
                 (solarConfigured ? 0x04 : 0) |
                 (imu.accelReady ? 0x08 : 0) |
-                (imu.gyroReady ? 0x10 : 0) |
-                (imu.magReady ? 0x20 : 0) |
-                (imu.bmpReady ? 0x40 : 0);
+                (imu.gyroReady ? 0x10 : 0);
   frame.mode = modeCode(mode);
   frame.reserved = 0;
   frame.uptimeMs = millis() - startup_time;
@@ -865,12 +774,8 @@ void sendObsBinary(const String& mode, unsigned long lastCmdAgo, bool estop, boo
   frame.gx = imu.gx;
   frame.gy = imu.gy;
   frame.gz = imu.gz;
-  frame.mx = imu.mx;
-  frame.my = imu.my;
-  frame.mz = imu.mz;
   frame.roll = imu.roll;
   frame.pitch = imu.pitch;
-  frame.heading = imu.heading;
 
   WiFiClient client = server.client();
   client.printf(
@@ -1022,6 +927,18 @@ void applyRlActions(const float actions[12], float outputScale) {
   }
 }
 
+void setWaveSupportTargets() {
+  // Brace the three planted legs in a wide tripod so the front-left leg can lift.
+  setLegTarget(1, 90 + 18 * sign_H[1], 90 + 24 * sign_K[1], 90 + 18 * sign_F[1]);
+  setLegTarget(2, 90 + 18 * sign_H[2], 90 + 24 * sign_K[2], 90 + 18 * sign_F[2]);
+  setLegTarget(3, 90 + 18 * sign_H[3], 90 + 24 * sign_K[3], 90 + 18 * sign_F[3]);
+}
+
+void setFrontLeftWaveTarget(float footWaveDeg) {
+  float footAngle = constrain(90 + 35 * sign_F[0] + footWaveDeg * sign_F[0], 35.0f, 155.0f);
+  setLegTarget(0, 90 - 10 * sign_H[0], 90 - 48 * sign_K[0], footAngle);
+}
+
 void blinkStatusLed(int count, int onMs, int offMs) {
   for (int i=0; i<count; i++) {
     writeStatusLed(true);
@@ -1055,7 +972,7 @@ void writeServo(int motorId, float angle) {
   float finalAngle = angle + offsets[motorId];
   finalAngle = constrain(finalAngle, 0, 180); 
   int pulse = map(finalAngle, 0, 180, SERVOMIN, SERVOMAX);
-  writeServoPulse(motorId, pulse);
+  writeServoPulse(motorToPwmChannel(motorId), pulse);
 }
 
 void disableServoOutputs() {
@@ -1085,8 +1002,9 @@ void enableOnlyServoOutput(int motorId) {
   }
   unlockState();
 
-  for(int i=0; i<16; i++) {
-    if (i != motorId) writeServoPulse(i, 0, true);
+  int selectedChannel = motorToPwmChannel(motorId);
+  for(int channel=0; channel<16; channel++) {
+    if (channel != selectedChannel) writeServoPulse(channel, 0, true);
   }
 }
 
@@ -1122,11 +1040,31 @@ void setAllTargets(float angle) {
   unlockState();
 }
 
+void setChargeRestTargets() {
+  for(int i=0; i<4; i++) {
+    setLegTarget(i, 90, 90 + 65 * sign_K[i], 90 + 65 * sign_F[i]);
+  }
+}
+
+void disableTorqueAfterChargeRest() {
+  lockState();
+  torqueEnabled = false;
+  calibrationMode = false;
+  chargeRestPendingPowerDown = false;
+  for(int i=0; i<16; i++) {
+    servoOutputEnabled[i] = false;
+  }
+  unlockState();
+
+  for(int i=0; i<16; i++) writeServoPulse(i, 0, true);
+}
+
 void runTestSequence() {
   lockState();
   cmd_mode = "manual";
   calibrationMode = true;
   torqueEnabled = true;
+  chargeRestPendingPowerDown = false;
   for(int i=0; i<16; i++) {
     servoOutputEnabled[i] = false;
   }
@@ -1190,6 +1128,9 @@ void sendOtaPage() {
   String page = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
   page += "<title>SOLAR OTA</title></head><body>";
   page += "<h1>SOLAR OTA Update</h1>";
+  page += "<p>Current firmware: ";
+  page += FIRMWARE_VERSION;
+  page += "</p>";
   page += "<form method='POST' action='/ota' enctype='multipart/form-data'>";
   page += "<input type='file' name='firmware' accept='.bin'>";
   page += "<button type='submit'>Upload Firmware</button>";
@@ -1202,6 +1143,8 @@ void handleOtaUpload() {
 
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
+    otaUploadOk = true;
+    otaUploadMessage = "Upload started";
     lockState();
     cmd_mode = "stand";
     cmd_vx = 0;
@@ -1210,16 +1153,25 @@ void handleOtaUpload() {
     unlockState();
     Serial.printf("OTA upload start: %s\n", upload.filename.c_str());
     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      otaUploadOk = false;
+      otaUploadMessage = "Update.begin failed. The board may not have an OTA app partition; flash once over USB with an OTA partition table.";
       Update.printError(Serial);
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!otaUploadOk) return;
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      otaUploadOk = false;
+      otaUploadMessage = "Firmware write failed";
       Update.printError(Serial);
     }
   } else if (upload.status == UPLOAD_FILE_END) {
+    if (!otaUploadOk) return;
     if (Update.end(true)) {
       Serial.printf("OTA upload complete: %u bytes\n", upload.totalSize);
+      otaUploadMessage = "Update complete. Rebooting...";
     } else {
+      otaUploadOk = false;
+      otaUploadMessage = "Update finalization failed";
       Update.printError(Serial);
     }
   }
@@ -1270,11 +1222,13 @@ void gaitTask(void *pvParameters) {
     String mode;
     float local_vx, local_wz, local_speed, local_stride, local_lift;
     bool localCalibrationMode, localTorqueEnabled, localEmergencyStop;
+    bool localChargeRestPendingPowerDown;
+    unsigned long localChargeRestStartedAt;
     bool localServoOutputEnabled[16];
 
     lockState();
     // Safety watchdog: fallback to idle if no commands received
-    if (now - last_cmd_time > 2000 && cmd_mode != "idle" && cmd_mode != "stand" && !calibrationMode) {
+    if (now - last_cmd_time > 2000 && cmd_mode != "idle" && cmd_mode != "stand" && cmd_mode != "charge_rest" && !calibrationMode) {
         cmd_mode = "idle";
         cmd_vx = 0; cmd_vy = 0; cmd_wz = 0;
     }
@@ -1287,6 +1241,8 @@ void gaitTask(void *pvParameters) {
     localCalibrationMode = calibrationMode;
     localTorqueEnabled = torqueEnabled;
     localEmergencyStop = emergencyStop;
+    localChargeRestPendingPowerDown = chargeRestPendingPowerDown;
+    localChargeRestStartedAt = chargeRestStartedAt;
     for(int i=0; i<16; i++) {
         localServoOutputEnabled[i] = servoOutputEnabled[i];
     }
@@ -1312,6 +1268,9 @@ void gaitTask(void *pvParameters) {
             setLegTarget(1, 90, 90, 90);
             setLegTarget(2, 90, 90 + 60 * sign_K[2], 90 + 60 * sign_F[2]);
             setLegTarget(3, 90, 90 + 60 * sign_K[3], 90 + 60 * sign_F[3]);
+        }
+        else if (mode == "charge_rest") {
+            setChargeRestTargets();
         }
         else if (mode == "stretch") {
             setLegTarget(0, 90, 90 - 45 * sign_K[0], 90 + 45 * sign_F[0]);
@@ -1352,6 +1311,26 @@ void gaitTask(void *pvParameters) {
             } else {
                 lockState();
                 cmd_mode = "stand"; // return to stand
+                unlockState();
+                emote_phase = 0;
+            }
+        }
+        else if (mode == "wave") {
+            emote_phase += dt;
+            setWaveSupportTargets();
+            if (emote_phase < 0.45f) {
+                setLegTarget(0, 90, 90, 90);
+            } else if (emote_phase < 0.70f) {
+                setFrontLeftWaveTarget(0);
+            } else if (emote_phase < 1.55f) {
+                float wave = sin((emote_phase - 0.70f) * PI * 2.0f * 3.0f) * 28.0f;
+                setFrontLeftWaveTarget(wave);
+            } else if (emote_phase < 1.85f) {
+                setLegTarget(0, 90, 90, 90);
+            } else {
+                for(int i=0; i<4; i++) setLegTarget(i, 90, 90, 90);
+                lockState();
+                cmd_mode = "stand";
                 unlockState();
                 emote_phase = 0;
             }
@@ -1412,6 +1391,7 @@ void gaitTask(void *pvParameters) {
     float max_deg_per_sec = (mode == "walk") ? 400.0 : 150.0;
     if (mode == "rl") max_deg_per_sec = 500.0;
     if (mode == "flip") max_deg_per_sec = 300.0;
+    if (mode == "wave") max_deg_per_sec = 240.0;
     float max_step = max_deg_per_sec * dt;
 
     if (localTorqueEnabled) {
@@ -1430,16 +1410,24 @@ void gaitTask(void *pvParameters) {
         }
     }
 
+    if (localChargeRestPendingPowerDown && now - localChargeRestStartedAt >= CHARGE_REST_SETTLE_MS) {
+        disableTorqueAfterChargeRest();
+    }
+
     vTaskDelay(xDelay);
   }
 }
 
 void imuTask(void *pvParameters) {
   const TickType_t xDelay = IMU_SAMPLE_INTERVAL_MS / portTICK_PERIOD_MS;
+  uint32_t lastDetectAttemptMs = 0;
 
   while(1) {
-    if (mpu6050Addr != 0 || lsm303dAddr != 0 || lsm303dlhcAccelAddr != 0 || lsm303dlhcMagAddr != 0 || l3gd20hAddr != 0) {
+    if (mpu6050Addr != 0) {
       sampleImu();
+    } else if (millis() - lastDetectAttemptMs >= 2000) {
+      lastDetectAttemptMs = millis();
+      retryImuDetection();
     }
     vTaskDelay(xDelay);
   }
@@ -1548,8 +1536,9 @@ void setup() {
       return;
     }
 
-    bool ok = !Update.hasError();
-    server.send(ok ? 200 : 500, "text/plain", ok ? "Update complete. Rebooting..." : "Update failed.");
+    bool ok = otaUploadOk && !Update.hasError();
+    String message = ok ? otaUploadMessage : String("Update failed: ") + otaUploadMessage;
+    server.send(ok ? 200 : 500, "text/plain", message);
     if (ok) {
       delay(500);
       ESP.restart();
@@ -1634,6 +1623,7 @@ void setup() {
       cmd_speed = boundedArg("speed", cmd_speed, 0.1, 3.0);
       cmd_stride = boundedArg("stride", cmd_stride, 0.0, 60.0);
       cmd_lift = boundedArg("lift", cmd_lift, 0.0, 60.0);
+      chargeRestPendingPowerDown = false;
       if (server.hasArg("mode")) {
           String newMode = server.arg("mode");
           if(!isAllowedMode(newMode)) {
@@ -1678,6 +1668,7 @@ void setup() {
       cmd_vy = 0;
       cmd_wz = 0;
       calibrationMode = false;
+      chargeRestPendingPowerDown = false;
       enableMappedLegServoOutputsLocked();
       last_cmd_time = millis();
       unlockState();
@@ -1710,20 +1701,26 @@ void setup() {
         return;
       }
 
-      String json = "{";
-      json += "\"mode\":\"" + mode + "\",";
-      json += "\"uptime_ms\":" + String(millis() - startup_time) + ",";
-      json += "\"last_cmd_ms_ago\":" + String(lastCmdAgo) + ",";
-      json += "\"emergency_stop\":" + String(estop ? "true" : "false") + ",";
-      json += "\"torque_enabled\":" + String(torque ? "true" : "false") + ",";
-      json += "\"solar_panel_configured\":" + String(solarConfigured ? "true" : "false") + ",";
-      json += "\"solar_panel_voltage_v\":";
-      json += solarConfigured ? String(solarVoltage, 3) : "null";
-      json += ",";
-      json += "\"imu_seq\":" + String(imu.seq) + ",";
-      json += "\"imu_age_ms\":" + String(millis() - imu.sampledAt);
-      json += "}";
-      server.send(200, "application/json", json);
+      char solarVoltageJson[16];
+      char json[384];
+      formatNullableFloat(solarVoltageJson, sizeof(solarVoltageJson), solarConfigured, solarVoltage, 3);
+      snprintf(
+        json,
+        sizeof(json),
+        "{\"mode\":\"%s\",\"uptime_ms\":%lu,\"last_cmd_ms_ago\":%lu,"
+        "\"emergency_stop\":%s,\"torque_enabled\":%s,\"solar_panel_configured\":%s,"
+        "\"solar_panel_voltage_v\":%s,\"imu_seq\":%lu,\"imu_age_ms\":%lu}",
+        mode.c_str(),
+        (unsigned long)(millis() - startup_time),
+        (unsigned long)lastCmdAgo,
+        boolJson(estop),
+        boolJson(torque),
+        boolJson(solarConfigured),
+        solarVoltageJson,
+        (unsigned long)imu.seq,
+        (unsigned long)(millis() - imu.sampledAt)
+      );
+      sendJsonBuffer(json);
   });
 
   server.on("/status", []() {
@@ -1744,73 +1741,101 @@ void setup() {
       float solarVoltage = cachedSolarPanelVoltage;
 
       if (server.hasArg("fast") && server.arg("fast") == "1") {
-        String json = "{";
-        json += "\"mode\":\"" + mode + "\",";
-        json += "\"uptime_ms\":" + String(millis() - startup_time) + ",";
-        json += "\"last_cmd_ms_ago\":" + String(lastCmdAgo) + ",";
-        json += "\"emergency_stop\":" + String(estop ? "true" : "false") + ",";
-        json += "\"torque_enabled\":" + String(torque ? "true" : "false") + ",";
-        json += "\"solar_panel_configured\":" + String(solarConfigured ? "true" : "false") + ",";
-        json += "\"solar_panel_voltage_v\":";
-        json += solarConfigured ? String(solarVoltage, 3) : "null";
-        json += ",";
-        json += "\"imu_ready\":" + String((imu.accelReady || imu.gyroReady || imu.magReady) ? "true" : "false") + ",";
-        json += "\"accel_ready\":" + String(imu.accelReady ? "true" : "false") + ",";
-        json += "\"gyro_ready\":" + String(imu.gyroReady ? "true" : "false") + ",";
-        json += "\"mag_ready\":" + String(imu.magReady ? "true" : "false") + ",";
-        json += "\"imu_seq\":" + String(imu.seq) + ",";
-        json += "\"imu_age_ms\":" + String(millis() - imu.sampledAt) + ",";
-        json += "\"roll_deg\":" + String(imu.roll, 1) + ",";
-        json += "\"pitch_deg\":" + String(imu.pitch, 1) + ",";
-        json += "\"heading_deg\":" + String(imu.heading, 1);
-        json += "}";
-        server.send(200, "application/json", json);
+        char solarVoltageJson[16];
+        char json[512];
+        formatNullableFloat(solarVoltageJson, sizeof(solarVoltageJson), solarConfigured, solarVoltage, 3);
+        snprintf(
+          json,
+          sizeof(json),
+          "{\"mode\":\"%s\",\"uptime_ms\":%lu,\"last_cmd_ms_ago\":%lu,"
+          "\"emergency_stop\":%s,\"torque_enabled\":%s,\"solar_panel_configured\":%s,"
+          "\"solar_panel_voltage_v\":%s,\"imu_ready\":%s,\"accel_ready\":%s,"
+          "\"gyro_ready\":%s,\"mpu6050_addr\":%u,\"imu_seq\":%lu,\"imu_age_ms\":%lu,"
+          "\"roll_deg\":%.1f,\"pitch_deg\":%.1f}",
+          mode.c_str(),
+          (unsigned long)(millis() - startup_time),
+          (unsigned long)lastCmdAgo,
+          boolJson(estop),
+          boolJson(torque),
+          boolJson(solarConfigured),
+          solarVoltageJson,
+          boolJson(imu.accelReady || imu.gyroReady),
+          boolJson(imu.accelReady),
+          boolJson(imu.gyroReady),
+          (unsigned)mpu6050Addr,
+          (unsigned long)imu.seq,
+          (unsigned long)(millis() - imu.sampledAt),
+          imu.roll,
+          imu.pitch
+        );
+        sendJsonBuffer(json);
         return;
       }
 
-      String json = "{";
-      json += "\"mode\":\"" + mode + "\",";
-      json += "\"uptime_ms\":" + String(millis() - startup_time) + ",";
-      json += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
-      json += "\"last_cmd_ms_ago\":" + String(lastCmdAgo) + ",";
-      json += "\"gait_hz\":50,";
-      json += "\"camera_fps_limit\":" + String((mode == "walk") ? 4 : 10) + ",";
-      json += "\"stride\":" + String(stride) + ",";
-      json += "\"lift\":" + String(lift) + ",";
-      json += "\"emergency_stop\":" + String(estop ? "true" : "false") + ",";
-      json += "\"torque_enabled\":" + String(torque ? "true" : "false") + ",";
-      json += "\"wifi_clients\":" + String(WiFi.softAPgetStationNum()) + ",";
-      json += "\"wifi_mode\":\"" + String(WiFi.status() == WL_CONNECTED ? "home_wifi_ap_fallback" : "fallback_ap") + "\",";
-      json += "\"home_wifi_configured\":" + String(strlen(homeSsid) > 0 ? "true" : "false") + ",";
-      json += "\"home_wifi_status\":\"" + String(wifiStatusName(WiFi.status())) + "\",";
-      json += "\"home_wifi_rssi\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0) + ",";
-      json += "\"ip\":\"" + String(WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "\",";
-      json += "\"ap_ip\":\"" + WiFi.softAPIP().toString() + "\",";
-      json += "\"solar_panel_configured\":" + String(solarConfigured ? "true" : "false") + ",";
-      json += "\"solar_panel_adc_pin\":" + String(SOLAR_PANEL_ADC_PIN) + ",";
-      json += "\"solar_panel_adc_mv\":";
-      json += solarConfigured ? String(solarAdcMv) : "null";
-      json += ",";
-      json += "\"solar_panel_voltage_v\":";
-      json += solarConfigured ? String(solarVoltage, 3) : "null";
-      json += ",";
-      json += "\"imu_ready\":" + String((imu.accelReady || imu.gyroReady || imu.magReady) ? "true" : "false") + ",";
-      json += "\"accel_ready\":" + String(imu.accelReady ? "true" : "false") + ",";
-      json += "\"gyro_ready\":" + String(imu.gyroReady ? "true" : "false") + ",";
-      json += "\"mag_ready\":" + String(imu.magReady ? "true" : "false") + ",";
-      json += "\"bmp180_ready\":" + String(imu.bmpReady ? "true" : "false") + ",";
-      json += "\"mpu6050_addr\":" + String(mpu6050Addr) + ",";
-      json += "\"l3gd20h_addr\":" + String(l3gd20hAddr) + ",";
-      json += "\"accel_addr\":" + String(mpu6050Addr != 0 ? mpu6050Addr : (lsm303dAddr != 0 ? lsm303dAddr : lsm303dlhcAccelAddr)) + ",";
-      json += "\"imu_seq\":" + String(imu.seq) + ",";
-      json += "\"imu_age_ms\":" + String(millis() - imu.sampledAt) + ",";
-      json += "\"gyro_dps\":[" + String(imu.gx, 2) + "," + String(imu.gy, 2) + "," + String(imu.gz, 2) + "],";
-      json += "\"accel_g\":[" + String(imu.ax, 4) + "," + String(imu.ay, 4) + "," + String(imu.az, 4) + "],";
-      json += "\"roll_deg\":" + String(imu.roll, 1) + ",";
-      json += "\"pitch_deg\":" + String(imu.pitch, 1) + ",";
-      json += "\"heading_deg\":" + String(imu.heading, 1);
-      json += "}";
-      server.send(200, "application/json", json);
+      char solarAdcJson[16];
+      char solarVoltageJson[16];
+      char json[1152];
+      wl_status_t wifiStatus = WiFi.status();
+      IPAddress robotIp = wifiStatus == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
+      IPAddress apIp = WiFi.softAPIP();
+      formatNullableInt(solarAdcJson, sizeof(solarAdcJson), solarConfigured, solarAdcMv);
+      formatNullableFloat(solarVoltageJson, sizeof(solarVoltageJson), solarConfigured, solarVoltage, 3);
+      snprintf(
+        json,
+        sizeof(json),
+        "{\"mode\":\"%s\",\"uptime_ms\":%lu,\"free_heap\":%u,\"last_cmd_ms_ago\":%lu,"
+        "\"gait_hz\":50,\"camera_fps_limit\":%d,\"stride\":%.2f,\"lift\":%.2f,"
+        "\"emergency_stop\":%s,\"torque_enabled\":%s,\"wifi_clients\":%u,"
+        "\"wifi_mode\":\"%s\",\"home_wifi_configured\":%s,\"home_wifi_status\":\"%s\","
+        "\"home_wifi_rssi\":%d,\"ip\":\"%u.%u.%u.%u\",\"ap_ip\":\"%u.%u.%u.%u\","
+        "\"solar_panel_configured\":%s,\"solar_panel_adc_pin\":%d,\"solar_panel_adc_mv\":%s,"
+        "\"solar_panel_voltage_v\":%s,\"imu_ready\":%s,\"accel_ready\":%s,\"gyro_ready\":%s,"
+        "\"mpu6050_addr\":%u,\"accel_addr\":%u,\"imu_seq\":%lu,\"imu_age_ms\":%lu,"
+        "\"gyro_dps\":[%.2f,%.2f,%.2f],\"accel_g\":[%.4f,%.4f,%.4f],"
+        "\"roll_deg\":%.1f,\"pitch_deg\":%.1f}",
+        mode.c_str(),
+        (unsigned long)(millis() - startup_time),
+        (unsigned)ESP.getFreeHeap(),
+        (unsigned long)lastCmdAgo,
+        (mode == "walk") ? 4 : 10,
+        stride,
+        lift,
+        boolJson(estop),
+        boolJson(torque),
+        (unsigned)WiFi.softAPgetStationNum(),
+        wifiStatus == WL_CONNECTED ? "home_wifi_ap_fallback" : "fallback_ap",
+        boolJson(strlen(homeSsid) > 0),
+        wifiStatusName(wifiStatus),
+        wifiStatus == WL_CONNECTED ? WiFi.RSSI() : 0,
+        (unsigned)robotIp[0],
+        (unsigned)robotIp[1],
+        (unsigned)robotIp[2],
+        (unsigned)robotIp[3],
+        (unsigned)apIp[0],
+        (unsigned)apIp[1],
+        (unsigned)apIp[2],
+        (unsigned)apIp[3],
+        boolJson(solarConfigured),
+        SOLAR_PANEL_ADC_PIN,
+        solarAdcJson,
+        solarVoltageJson,
+        boolJson(imu.accelReady || imu.gyroReady),
+        boolJson(imu.accelReady),
+        boolJson(imu.gyroReady),
+        (unsigned)mpu6050Addr,
+        (unsigned)mpu6050Addr,
+        (unsigned long)imu.seq,
+        (unsigned long)(millis() - imu.sampledAt),
+        imu.gx,
+        imu.gy,
+        imu.gz,
+        imu.ax,
+        imu.ay,
+        imu.az,
+        imu.roll,
+        imu.pitch
+      );
+      sendJsonBuffer(json);
   });
 
   server.on("/imu", []() {
@@ -1823,7 +1848,7 @@ void setup() {
         sendImuBinary(imu);
         return;
       }
-      server.send(200, "application/json", imuJson(imu));
+      sendImuJson(imu);
   });
 
   server.on("/i2c", []() {
@@ -1862,6 +1887,7 @@ void setup() {
     emergencyStop = false;
     torqueEnabled = false;
     calibrationMode = false;
+    chargeRestPendingPowerDown = false;
     cmd_mode = "stand";
     cmd_vx = 0;
     cmd_vy = 0;
@@ -1875,6 +1901,30 @@ void setup() {
     server.send(200, "text/plain", "EMERGENCY STOP CLEARED");
   });
 
+  server.on("/charge-rest", []() {
+    if (!requireApiAuth()) return;
+    lockState();
+    if (emergencyStop) {
+      unlockState();
+      server.send(423, "text/plain", "Emergency stop active; call /estop/clear first");
+      return;
+    }
+    cmd_mode = "charge_rest";
+    cmd_vx = 0;
+    cmd_vy = 0;
+    cmd_wz = 0;
+    calibrationMode = false;
+    torqueEnabled = true;
+    chargeRestPendingPowerDown = true;
+    chargeRestStartedAt = millis();
+    last_cmd_time = chargeRestStartedAt;
+    emote_phase = 0;
+    gait_phase = 0;
+    enableMappedLegServoOutputsLocked();
+    unlockState();
+    server.send(200, "text/plain", "CHARGE REST STARTED");
+  });
+
   server.on("/testseq", []() {
     if (!requireApiAuth()) return;
     lockState();
@@ -1883,6 +1933,7 @@ void setup() {
       server.send(423, "text/plain", "Emergency stop active");
       return;
     }
+    chargeRestPendingPowerDown = false;
     runningTestSeq = true;
     unlockState();
     server.send(200, "text/plain", "TEST SEQ START");
@@ -1896,6 +1947,8 @@ void setup() {
     js += "\"BL_SET\":" + String(BL_SET) + ", \"BR_SET\":" + String(BR_SET) + ",";
     js += "\"offsets\":[";
     for(int i=0; i<16; i++) { js += String(offsets[i]) + (i<15 ? "," : ""); }
+    js += "],\"motorChannels\":[";
+    for(int i=0; i<16; i++) { js += String(MOTOR_TO_PWM_CHANNEL[i]) + (i<15 ? "," : ""); }
     js += "]}";
     unlockState();
     server.send(200, "application/json", js);
@@ -1938,6 +1991,7 @@ void setup() {
        return;
     }
     cmd_mode = "manual";
+    chargeRestPendingPowerDown = false;
     String tStr = server.arg("t");
     int idx = 0;
     int startIdx = 0;
@@ -1970,6 +2024,7 @@ void setup() {
             return;
         }
         torqueEnabled = requestedTorque;
+        chargeRestPendingPowerDown = false;
         enabled = torqueEnabled;
         if (torqueEnabled) {
             calibrationMode = false;
@@ -2009,6 +2064,7 @@ void setup() {
     }
     if (server.hasArg("state")) {
         calibrationMode = server.arg("state").toInt() == 1;
+        chargeRestPendingPowerDown = false;
         enabled = calibrationMode;
         if (calibrationMode) {
             cmd_mode = "manual";
@@ -2049,6 +2105,7 @@ void setup() {
       float a = server.arg("angle").toFloat();
       if (m >= 0 && m < 16) {
         cmd_mode = "manual";
+        chargeRestPendingPowerDown = false;
         torqueEnabled = true;
         targetAngle[m] = constrain(a, 0, 180);
         if (calibrationMode) {

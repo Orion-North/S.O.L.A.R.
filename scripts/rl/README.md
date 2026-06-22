@@ -25,10 +25,15 @@ The trained IMU speed policy runs off-board on the host PC. The ESP32 should not
 run the neural net; it should stream IMU data, accept bounded `/rl` action
 packets, interpolate servo targets, and enforce watchdog/safety behavior.
 
-The trained `solar-charge-rl` policy uses the IMU observation plus
-`solar_panel_voltage_v`. It must be trained with
-`simulation/train_solar_charge.ps1`; it is not compatible with the older
-`solar_flat_imu_speed` checkpoints because the observation size is different.
+The trained `solar-charge-rl` policy does not use gyro/IMU telemetry. It uses
+the previous servo action, an open-loop gait phase, and `solar_panel_voltage_v`.
+It must be trained with `simulation/train_solar_charge.ps1`; it is not
+compatible with the older `solar_flat_imu_speed` or
+`solar_flat_solar_charge` IMU checkpoints because the observation size is
+different.
+
+Older IMU solar-charge checkpoints use `--policy solar-charge-imu-rl` and must
+be passed explicitly.
 
 ## Run In Dry-Run Mode
 
@@ -58,7 +63,7 @@ To dry-run the latest trained IMU policy with real robot telemetry:
 .\run_imu_speed_policy.ps1 -RobotUrl http://solar.local -Duration 15 -LogJsonl ..\..\output\rl-imu-dry-run.jsonl
 ```
 
-To dry-run the latest trained solar-charge policy:
+To dry-run the latest trained no-IMU solar-charge policy:
 
 ```powershell
 .\run_solar_charge_policy.ps1 -RobotUrl http://solar.local -Duration 15 -LogJsonl ..\..\output\rl-solar-charge-dry-run.jsonl
@@ -66,17 +71,17 @@ To dry-run the latest trained solar-charge policy:
 
 ## Enable Motion
 
-Only use this after the robot is on the floor, calibrated, powered safely, and
-you are ready to hit emergency stop:
+Motion mode is intended for supervised tests with the robot on the floor,
+calibrated, powered safely, and near emergency stop controls:
 
 ```powershell
 python -m solar_rl.runner --robot-url http://solar.local --enable-motion --duration 30
 ```
 
-If your firmware API token is enabled:
+With a firmware API token enabled:
 
 ```powershell
-python -m solar_rl.runner --robot-url http://solar.local --api-token YOUR_TOKEN --enable-motion
+python -m solar_rl.runner --robot-url http://solar.local --api-token <token> --enable-motion
 ```
 
 For the trained IMU policy, start tethered with a low output scale:
@@ -101,7 +106,7 @@ The firmware exposes optional panel voltage in `/status` as
 `firmware/solar_main/secrets.h.example` to `secrets.h` and set:
 
 ```cpp
-#define SOLAR_PANEL_ADC_PIN -1  // replace -1 with your unused ADC1 pin
+#define SOLAR_PANEL_ADC_PIN -1
 #define SOLAR_PANEL_VOLTAGE_DIVIDER 2.0f
 ```
 
@@ -109,13 +114,14 @@ Use a resistor divider so the ADC pin never sees more than 3.3 V, and set the
 divider ratio to `panel_voltage / adc_voltage`. Prefer ADC1-capable pins; ADC2
 pins are unreliable while Wi-Fi is active.
 
-## Next RL Steps
+## RL Development Direction
 
 - Use `--log-jsonl` runs to compare command timing, latency, and future reward
   signals before training a model.
 - Train the solar-aware policy with `simulation/train_solar_charge.ps1`. Its
-  reward includes simulated panel voltage, charging rest posture, movement
-  penalties while charging, and joint-power penalties.
+  reward includes simulated panel voltage, a flat-ground search period,
+  charging rest posture, movement penalties while charging, and joint-power
+  penalties.
 - Keep the neural policy on the host. The ESP32 receives normalized action
   packets through `/rl` and maps them to logical servo targets.
 - Keep real-hardware inference bounded and watchdog-friendly. The ESP32

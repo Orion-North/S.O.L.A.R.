@@ -1,16 +1,16 @@
 # S.O.L.A.R. Motion RL Setup
 
-This folder is for the motion-only quadruped RL path. Solar charging,
-sun-seeking, camera navigation, and energy budgeting are intentionally out of
-scope until basic locomotion works.
+This folder is for the quadruped RL path. Basic flat locomotion is ready, and
+there is now a solar-voltage seeking task that trains without gyro/IMU
+observations.
 
-The installed local stack is:
+The supported local training stack is:
 
 - Isaac Lab source: `external/IsaacLab`
 - Isaac Lab venv: `external/IsaacLab/.venv`
 - Isaac Sim: 5.1.0 from NVIDIA pip packages
 - RL backend: RSL-RL
-- Verified GPU: RTX 5080 via CUDA PyTorch
+- CUDA-capable NVIDIA GPU with PyTorch CUDA support
 
 ## What Is Ready
 
@@ -34,12 +34,10 @@ Open the simulator GUI with:
 
 Use this launcher instead of calling `isaacsim.exe` directly. The script sets
 the Isaac Lab venv, user-site isolation, and Omniverse EULA environment before
-starting the GUI. It uses the PXR/Hydra viewport because the full RTX viewport
-currently crashes on this Windows 11 / RTX 5080 machine inside
-`rtx.scenedb.plugin.dll`.
+starting the GUI. It uses the PXR/Hydra viewport, which is the stable GUI path
+for this project.
 
-The full RTX Isaac Sim launcher is still available for retesting after driver or
-Isaac Sim updates:
+The full RTX Isaac Sim launcher is also available:
 
 ```powershell
 .\simulation\open_isaac_sim_rtx.ps1
@@ -47,7 +45,8 @@ Isaac Sim updates:
 
 ## Run Built-In Training
 
-Use this while waiting on the S.O.L.A.R. model:
+Use this as a simulator and RSL-RL regression check. It trains the built-in A1
+task and is still useful when debugging Isaac Lab, CUDA, or driver changes:
 
 ```powershell
 .\simulation\train_builtin_a1.ps1
@@ -104,7 +103,7 @@ Solar-Velocity-Flat-v0
 Solar-aware charging training is registered separately as:
 
 ```text
-Solar-Charge-Flat-IMU-v0
+Solar-Charge-Flat-NoIMU-v0
 ```
 
 Run a quick smoke test:
@@ -125,9 +124,11 @@ Run a longer high-throughput training pass:
 .\simulation\train_solar_proxy.ps1 -NumEnvs 2048 -MaxIterations 1000
 ```
 
-Train the solar-charge policy, which observes simulated panel voltage and is
-rewarded for finding sun, lowering into a charging pose, and minimizing motion
-and joint power while charging:
+Train the no-IMU solar-charge policy, which observes only previous servo
+actions, an open-loop gait phase, and simulated panel voltage. It is rewarded
+for walking on flat ground toward a bright patch within a 12-second episode,
+then lowering into a still charging pose while minimizing motion and joint
+power:
 
 ```powershell
 .\simulation\train_solar_charge.ps1 -NumEnvs 32768 -MaxIterations 2500
@@ -137,7 +138,7 @@ Logs go under:
 
 ```text
 external/IsaacLab/logs/rsl_rl/solar_flat
-external/IsaacLab/logs/rsl_rl/solar_flat_solar_charge
+external/IsaacLab/logs/rsl_rl/solar_flat_solar_charge_no_imu
 ```
 
 The current proxy standing pose uses radial hips near 45 degrees outward and
@@ -145,8 +146,8 @@ thigh joints just inside their 60-degree downward mechanical stop.
 
 ## Model Boundary
 
-The first generated proxy exists, but it still needs visual/physics inspection
-before training. The model should provide:
+The generated proxy is intentionally simpler than the physical robot. Before
+using a trained policy as more than a simulation experiment, inspect and tune:
 
 - 12 actuated revolute joints, 3 per leg.
 - Correct joint names and left/right sign conventions.
@@ -155,5 +156,6 @@ before training. The model should provide:
 - Foot collision geometry with realistic friction.
 - A neutral standing pose.
 
-Once that exists, the next step is to clone the built-in A1 velocity task into a
-S.O.L.A.R. task and swap in the S.O.L.A.R. asset.
+The flat velocity and no-IMU solar-charge tasks are registered, but any policy
+trained from this proxy should be treated as experimental until it is validated
+with conservative output scales on real hardware.

@@ -1,84 +1,107 @@
-# S.O.L.A.R. (Self-Operating Legged Autonomous Robot)
-<img width="1920" height="1080" alt="solar" src="https://github.com/user-attachments/assets/05dcadb7-5c9f-4229-860c-bed806fdc94c" />
-**S.O.L.A.R.** is a quadruped platform engineered for long-term autonomy. The project explores the synergy between on-board solar energy harvesting and off-board high-performance Reinforcement Learning (RL) inference.
+# S.O.L.A.R. - Self-Operating Legged Autonomous Robot
 
----
+S.O.L.A.R. is a solar-assisted 12-DOF quadruped robot built as a capstone STEM
+project. The current prototype walks from a browser control panel, streams
+camera and IMU telemetry over Wi-Fi, supports OTA firmware updates, and includes
+the first host-side simulation/RL path for future solar-seeking autonomy.
 
-## Planned System Architecture
-The robot utilizes a **Distributed Compute Model** to balance power efficiency with high-performance processing:
-* **Edge (ESP32-CAM):** Manages real-time gait execution, IMU stabilization, and low-latency video streaming.
-* **Host (PC / RTX 5080):** Receives telemetry and vision data over Wi-Fi to run complex RL locomotion policies, returning motor commands to the Edge.
+Walking demo video: [docs/assets/hero-walking-control-panel.mp4](docs/assets/hero-walking-control-panel.mp4)
 
+## Current Status
 
+- Built and assembled a physical 12-servo quadruped.
+- Verified every motor channel and calibration path.
+- Confirmed walking from the technical control panel.
+- Added live MPU-6050 roll, pitch, acceleration, and gyro telemetry.
+- Added ESP32-CAM HTTP API, camera capture, emergency stop, torque control,
+  calibration storage, OTA update page, and charge-rest posture.
+- Added a mobile PWA and authenticated remote gateway path.
+- Added Isaac Lab simulation and host-side RL deployment scaffolding.
+- Solar panel charging has been demonstrated, but closed-loop solar telemetry
+  and autonomous energy behavior are still future work.
 
-## Hardware Stack
+## Hardware
 
-### Power & Energy
-* **Solar Array:** 2 5V 1W Monocrystalline Solar Panels.
-* **Management:** Solar LiPo Charger + 5V 5A BEC (Step-Down) for high-current servo stabilization.
-* **Storage:** 7.4V 2S High-Discharge LiPo.
+| Area | Components |
+| --- | --- |
+| Controller | AI-Thinker ESP32-CAM |
+| Actuation | 12x MG90S metal gear micro servos |
+| Servo driver | PCA9685 16-channel I2C PWM board |
+| IMU | MPU-6050 accelerometer and gyroscope |
+| Power | 7.4 V 2S LiPo, 5 V 5 A BEC |
+| Solar | 2x 5 V 1 W monocrystalline panels and 2S solar charger |
+| Structure | PLA-CF frame components, TPU 95A feet |
+| Host compute | RTX laptop/PC for simulation and off-board inference |
 
-### Compute & Motion
-* **Controller:** ESP32-CAM (Vision + Logic).
-* **Actuation:** 12-DOF via MG90S Metal Gear Micro Servos (3-DOF per leg).
-* **Driver:** PCA9685 16-Channel I2C PWM Controller.
-* **IMU:** Adafruit 10-DOF over shared I2C. L3GD20H gyroscope and LSM303D accel/mag are sampled locally at 50 Hz; BMP180 is detected but not used for high-rate telemetry.
+See [PARTS_LIST.md](PARTS_LIST.md) and [docs/WIRING_DIAGRAM.md](docs/WIRING_DIAGRAM.md)
+for wiring and part-level detail.
 
-### Structural Materials
-* **Frame:** PLA-CF (Carbon Fiber Reinforced) for maximum structural rigidity and minimal weight.
-* **Contact:** TPU 95A HF for high-traction, vibration-dampening feet.
+## Software
 
----
+| Path | Purpose |
+| --- | --- |
+| [firmware](firmware/) | ESP32-CAM firmware for movement, telemetry, camera, OTA, safety, and calibration |
+| [control-panel](control-panel/) | Browser/Electron technical panel for walking, calibration, camera, and telemetry |
+| [mobile-app](mobile-app/) | Android-installable PWA for simplified remote operation |
+| [remote-gateway](remote-gateway/) | Authenticated relay for controlling the local robot through one endpoint |
+| [scripts/rl](scripts/rl/) | Host-side robot client and policy runner |
+| [simulation](simulation/) | Isaac Lab assets, training scripts, and solar-aware RL task setup |
+| [docs](docs/) | Portfolio report, API reference, wiring, demo checklist, and capstone deliverables |
 
-## Repository Structure
-* `/firmware`: ESP32 code (Inverse Kinematics & UDP Comms).
-* `/control-panel`: Technical browser control panel for calibration, telemetry, and low-level operation.
-* `/mobile-app`: Consumer-friendly Android-installable remote interface.
-* `/remote-gateway`: Optional internet-facing relay that forwards the existing ESP32 HTTP API without changing firmware behavior.
-* `/scripts`: Python-based host-side inference and GPU-side processing.
-* `/simulation`: Motion-only quadruped RL setup, URDF/USD assets, and virtual training environments.
-* `/docs`: System schematics and power-cycle logic.
+## Documentation
 
-## Remote Access Direction
-The ESP32 should stay on a trusted Wi-Fi network and keep serving the same local API (`/cmd`, `/status`, `/capture`, `/estop`, calibration, OTA). For world-wide control, run `/remote-gateway` on a machine that can reach the robot locally, then expose that gateway through a secure tunnel, VPS, or reverse proxy.
+- [Project Report](docs/PROJECT_REPORT.md): publication-style writeup for the
+  portfolio page.
+- [API Reference](docs/API.md): robot HTTP routes and telemetry payloads.
+- [Wiring Diagram](docs/WIRING_DIAGRAM.md): power, I2C, servo, IMU, and solar
+  telemetry wiring notes.
+- [Simulation README](simulation/README.md): Isaac Lab setup and training tasks.
+- [Host Inference README](scripts/rl/README.md): real-robot policy runner.
 
-IMU data is exposed without continuous Wi-Fi streaming. `/status` includes low-rate roll, pitch, heading, and readiness fields for the apps. `/imu` returns the latest cached sample with accel, gyro, mag, and attitude values when higher-detail telemetry is needed; `/imu?fmt=bin` returns the same sample as a compact binary frame for host-side polling.
+## Build And Run
 
-The Android app path is the separate `/mobile-app` PWA:
-1. Run the remote gateway with `ROBOT_BASE_URL`, `ROBOT_API_TOKEN`, and `GATEWAY_TOKEN`.
-2. Open the gateway URL on Android Chrome.
-3. Use Chrome's install option to add S.O.L.A.R. Control to the home screen.
-4. Set the target to the gateway URL and enter the gateway access code.
+Main ESP32 firmware:
 
-Production remote control requires `GATEWAY_TOKEN`; without it, the gateway refuses robot control routes by default.
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run
+```
 
-## Development Roadmap
-- [x] Hardware Procurement
-- [x] Build The Robot
-- [x] Program Simple Movement
-- [x] ESP32 to RTX 5080 Bridge Over Wifi
-- [x] RL Inference Bridge Starter
-- [ ] Solar Charge/Sleep Logic Integration
-- [ ] Autonomous Navigation (RL Stretch Goal)
+Control panel:
 
-## RL Starter
-The current RL priority is motion only: train the quadruped to stand, walk, and
-track velocity commands before adding solar autonomy. The Isaac Lab setup lives
-in `/simulation` and is ready to run built-in quadruped training until the
-custom S.O.L.A.R. robot model exists.
+```powershell
+cd control-panel
+npm install
+npm run build
+npm run electron:dev
+```
+
+Remote gateway:
+
+```powershell
+cd remote-gateway
+$env:ROBOT_BASE_URL="http://solar.local"
+$env:GATEWAY_TOKEN="choose-a-remote-access-code"
+npm start
+```
+
+Isaac Lab smoke test:
 
 ```powershell
 .\simulation\run_builtin_a1_smoke_test.ps1
 ```
 
-The later host-side inference bridge lives in `/scripts/rl`; keep it separate
-from simulator training until a policy is ready to deploy.
+## Roadmap
 
-## Nested Objectives (For STEM Program Deliverables)
-- [x] Build Functioning Quadruped Prototype With No Solar Power (By End Of Capstone Alpha Project)
-- [x] Charge The Battery Any Amount With Solar Pannels Mounted On The Robot
-- [ ] Program The Robot To Charge And Move So It Can Sustain Itself In Sunny Areas (By End Of Capstone Beta Project)
-- [ ] Program The Robot With RL/CV To Locate Sunny Areas And Budget Energy Until They Are Found (Stretch Goal)
+- [x] Build physical quadruped prototype.
+- [x] Test individual motors and servo channel map.
+- [x] Walk from the browser control panel.
+- [x] Add live IMU telemetry.
+- [x] Add camera capture and FPV pull mode.
+- [x] Add OTA-capable partition layout.
+- [x] Add host-side RL client and Isaac Lab simulation setup.
+- [ ] Finalize solar panel voltage telemetry hardware.
+- [ ] Train and validate solar-charge policy in simulation.
+- [ ] Deploy bounded solar-aware behavior on real hardware.
+- [ ] Add autonomous navigation or computer-vision sun seeking.
 
----
-*Developed as a Capstone STEM Project.*
+Developed as a Capstone STEM Project.

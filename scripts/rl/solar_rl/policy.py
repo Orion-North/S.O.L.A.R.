@@ -128,6 +128,7 @@ class RslRlImuSpeedPolicy:
     """Host-side loader for the Isaac Lab IMU speed policy."""
 
     actor_input_dim = 27
+    actor_hidden_dims = (256, 128, 128)
     cycle_time_s = 0.65
     checkpoint_label = "IMU speed"
     run_name = "solar_flat_imu_speed"
@@ -165,27 +166,22 @@ class RslRlImuSpeedPolicy:
         if not checkpoint.exists():
             raise FileNotFoundError(checkpoint)
         data = self.torch.load(checkpoint, map_location="cpu")
-        actor = self.nn.Sequential(
-            self.nn.Linear(self.actor_input_dim, 256),
-            self.nn.ELU(),
-            self.nn.Linear(256, 128),
-            self.nn.ELU(),
-            self.nn.Linear(128, 128),
-            self.nn.ELU(),
-            self.nn.Linear(128, 12),
-        )
-        actor.load_state_dict(
-            {
-                "0.weight": data["actor_state_dict"]["mlp.0.weight"],
-                "0.bias": data["actor_state_dict"]["mlp.0.bias"],
-                "2.weight": data["actor_state_dict"]["mlp.2.weight"],
-                "2.bias": data["actor_state_dict"]["mlp.2.bias"],
-                "4.weight": data["actor_state_dict"]["mlp.4.weight"],
-                "4.bias": data["actor_state_dict"]["mlp.4.bias"],
-                "6.weight": data["actor_state_dict"]["mlp.6.weight"],
-                "6.bias": data["actor_state_dict"]["mlp.6.bias"],
-            }
-        )
+        dims = [self.actor_input_dim, *self.actor_hidden_dims, 12]
+        layers = []
+        for index, (input_dim, output_dim) in enumerate(zip(dims, dims[1:])):
+            layers.append(self.nn.Linear(input_dim, output_dim))
+            if index < len(dims) - 2:
+                layers.append(self.nn.ELU())
+        actor = self.nn.Sequential(*layers)
+
+        actor_state = {}
+        linear_index = 0
+        for module_index, module in enumerate(actor):
+            if isinstance(module, self.nn.Linear):
+                actor_state[f"{module_index}.weight"] = data["actor_state_dict"][f"mlp.{linear_index}.weight"]
+                actor_state[f"{module_index}.bias"] = data["actor_state_dict"][f"mlp.{linear_index}.bias"]
+                linear_index += 2
+        actor.load_state_dict(actor_state)
         return actor
 
     def reset(self) -> None:
@@ -253,3 +249,35 @@ class RslRlSolarChargePolicy(RslRlImuSpeedPolicy):
         solar_voltage = observation.solar_voltage_v
         normalized_voltage = 0.0 if solar_voltage is None else self._clamp(solar_voltage, 0.0, 1.25)
         return [*base_obs, normalized_voltage]
+
+
+class RslRlNoImuSolarChargePolicy(RslRlImuSpeedPolicy):
+    """Host-side loader for the no-IMU solar-charge RL policy."""
+
+    actor_input_dim = 17
+    cycle_time_s = 0.75
+    checkpoint_label = "no-IMU solar charge"
+    run_name = "solar_flat_solar_charge_no_imu"
+
+    def _build_observation(self, observation: Observation) -> list[float]:
+        elapsed = time.monotonic() - self.started_at
+        phase = (elapsed / self.cycle_time_s % 1.0) * (2.0 * math.pi)
+        phase_terms: list[float] = []
+        for harmonic in (1, 2):
+            harmonic_phase = phase * harmonic
+            phase_terms.extend((math.sin(harmonic_phase), math.cos(harmonic_phase)))
+
+        solar_voltage = observation.solar_voltage_v
+        normalized_voltage = 0.0 if solar_voltage is None else self._clamp(solar_voltage, 0.0, 1.25)
+        return [*self.prev_action, *phase_terms, normalized_voltage]
+
+    def act(self, observation: Observation) -> RlServoAction:
+        if observation.emergency_stop or not observation.torque_enabled:
+            self.prev_action = [0.0] * 12
+            return RlServoAction(tuple(self.prev_action), output_scale=0.0)
+
+        obs = self.torch.tensor(self._build_observation(observation), dtype=self.torch.float32).unsqueeze(0)
+        with self.torch.no_grad():
+            action = self.actor(obs).squeeze(0).tolist()
+        self.prev_action = [self._clamp(float(value), -1.0, 1.0) for value in action]
+        return RlServoAction(tuple(self.prev_action), output_scale=self.output_scale)

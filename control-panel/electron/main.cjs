@@ -15,6 +15,7 @@ const routePolicy = new Map([
   ['/flash/auto', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
   ['/estop', { minIntervalMs: 100, timeoutMs: 800, methods: new Set(['GET', 'POST']) }],
   ['/estop/clear', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
+  ['/charge-rest', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
   ['/testseq', { minIntervalMs: 1000, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
   ['/settings/get', { minIntervalMs: 1000, timeoutMs: 1800, methods: new Set(['GET']) }],
   ['/settings/set', { minIntervalMs: 1000, timeoutMs: 2200, methods: new Set(['GET', 'POST']) }],

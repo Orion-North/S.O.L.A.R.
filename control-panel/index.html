@@ -12,8 +12,10 @@
         <div class="branding">
           <span class="eyebrow">Quadruped Operations</span>
           <h1>S.O.L.A.R.</h1>
+          <p class="brand-subtitle">Self-Operating Legged Autonomous Robot</p>
         </div>
         <div class="system-status">
+          <span class="status-label">Connection</span>
           <div class="status-indicator">
             <span class="block offline"></span>
             <span class="status-text target-ip-text">NODE: [OFFLINE]</span>
@@ -22,19 +24,19 @@
       </header>
 
       <nav class="tab-nav" aria-label="Control panel views">
-        <button class="nav-btn active" data-target="view-tactical">Orbital View</button>
-        <button class="nav-btn" data-target="view-calib">Kinematics Lab</button>
-        <button class="nav-btn" data-target="view-path">Flight Path</button>
+        <button class="nav-btn active" data-target="view-tactical">Operations</button>
+        <button class="nav-btn" data-target="view-calib">Calibration</button>
+        <button class="nav-btn" data-target="view-path">Sequences</button>
       </nav>
 
       <main class="dashboard-grid" id="view-tactical">
         <section class="main-view tactical-panel glass-panel">
           <div class="panel-header">
             <div>
-              <span class="section-kicker">Primary Optical Sensor</span>
-              <h2>Camera Feed</h2>
+              <span class="section-kicker">Vision</span>
+              <h2>Live Camera</h2>
             </div>
-            <div class="feed-status" id="feed-status">Manual FPV</div>
+            <div class="feed-status" id="feed-status">Manual Capture</div>
           </div>
           <div class="camera-container">
             <img id="cam-stream" src="" alt="Camera feed awaiting capture" class="cam-feed" />
@@ -64,28 +66,28 @@
         <aside class="panel tactical-panel side-panel glass-panel">
           <div class="panel-header">
             <div>
-              <span class="section-kicker">Uplink Config</span>
+              <span class="section-kicker">Connection</span>
               <h2>Robot Link</h2>
             </div>
           </div>
           <div class="panel-content">
             <div class="connection-config control-group">
-              <label for="ip-input">Robot or remote gateway</label>
+              <label for="ip-input">Robot or gateway address</label>
               <div class="input-group">
                 <input type="text" id="ip-input" value="solar.local" autocomplete="url" inputmode="url" />
-                <button id="apply-ip" class="btn btn-primary">Initialize</button>
+                <button id="apply-ip" class="btn btn-primary">Connect</button>
               </div>
               <label for="token-input" class="token-label">Access code</label>
               <input type="password" id="token-input" autocomplete="current-password" placeholder="Optional" />
             </div>
 
             <div class="control-group host-guardrail">
-              <div class="group-title">Host Guardrails</div>
+              <div class="group-title">System Health</div>
               <div class="guardrail-grid">
                 <span>Link path</span>
                 <strong id="proxy-mode-text">Browser direct mode</strong>
                 <span>Telemetry</span>
-                <strong>Fast status / 1.5s</strong>
+                <strong>Status 1.5s + IMU 4 Hz</strong>
                 <span>Camera</span>
                 <strong>Manual pull</strong>
               </div>
@@ -100,7 +102,7 @@
             </div>
 
             <div class="control-group">
-              <div class="group-title">Quick Commands</div>
+              <div class="group-title">Actions</div>
               <div class="action-grid actions">
                 <button class="btn btn-secondary" id="btn-ping">Ping Node</button>
                 <button class="btn btn-neutral" id="btn-flash">Toggle Flash</button>
@@ -109,8 +111,10 @@
                 <button class="btn btn-warning" id="btn-sit">Sit</button>
                 <button class="btn btn-warning" id="btn-stretch">Stretch</button>
                 <button class="btn btn-warning" id="btn-wag">Wag</button>
-                <button class="btn btn-warning" id="btn-capture">Photo</button>
-                <button class="btn btn-secondary" id="btn-live-feed">FPV Live</button>
+                <button class="btn btn-warning" id="btn-wave">Wave</button>
+                <button class="btn btn-warning" id="btn-charge-rest">Charge Rest</button>
+                <button class="btn btn-warning" id="btn-capture">Capture</button>
+                <button class="btn btn-secondary" id="btn-live-feed">Live Feed</button>
               </div>
             </div>
 
@@ -176,7 +180,7 @@
         <section class="tactical-panel full-panel glass-panel">
           <div class="panel-header">
             <div>
-              <span class="section-kicker">Available Actions</span>
+              <span class="section-kicker">Motion Plan</span>
               <h2>Build Sequence</h2>
             </div>
             <div class="panel-note">Select to append</div>
@@ -194,6 +198,7 @@
               <button class="btn btn-secondary path-add-btn" data-action="D">Turn Right</button>
               <button class="btn btn-warning path-add-btn" data-action="F">Flip</button>
               <button class="btn btn-warning path-add-btn" data-action="E">Dance</button>
+              <button class="btn btn-warning path-add-btn" data-action="V">Wave</button>
               <button class="btn btn-neutral path-add-btn btn-wide" data-action="WAIT">Wait / Delay</button>
             </div>
           </div>
@@ -202,7 +207,7 @@
         <section class="tactical-panel full-panel glass-panel">
           <div class="panel-header">
             <div>
-              <span class="section-kicker">Sequence Queue</span>
+              <span class="section-kicker">Execution</span>
               <h2>Autonomous Loop</h2>
             </div>
             <div class="panel-note">Continuous loop</div>
@@ -220,7 +225,7 @@
       </main>
 
       <footer class="bottom-bar">
-        <p>Secure channel // distributed reinforcement learning architecture</p>
+        <p>Secure channel / distributed reinforcement learning architecture</p>
         <p>System time: <span id="sys-time">00:00:00</span></p>
       </footer>
     </div>

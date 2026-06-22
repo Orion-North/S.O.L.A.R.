@@ -26,6 +26,7 @@ const robotRoutes = new Set([
   '/flash/auto',
   '/estop',
   '/estop/clear',
+  '/charge-rest',
   '/testseq',
   '/settings/get',
   '/settings/set',

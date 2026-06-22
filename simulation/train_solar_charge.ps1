@@ -15,7 +15,7 @@ if ($env:PYTHONPATH) {
 }
 
 .\isaaclab.bat -p "$RepoRoot\simulation\tools\run_rsl_rl_train_with_solar.py" `
-  --task Solar-Charge-Flat-IMU-v0 `
+  --task Solar-Charge-Flat-NoIMU-v0 `
   --num_envs $NumEnvs `
   --max_iterations $MaxIterations `
   --headless

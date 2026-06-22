@@ -1,9 +1,8 @@
 # S.O.L.A.R. Wiring Diagram
 
-This is the current wiring draft inferred from the parts list, README, and
-`firmware/solar_main/solar_main.ino`. Connections marked `TBD` need the actual
-hardware choice or physical wiring confirmed before this can be treated as a
-build schematic.
+This wiring reference is derived from the parts list, README, and
+`firmware/solar_main/solar_main.ino`. It documents the prototype wiring and the
+remaining hardware interfaces that are still planned.
 
 ## System Overview
 
@@ -15,8 +14,8 @@ flowchart LR
   bec["5 V 5 A BEC / buck regulator"]
   esp["AI-Thinker ESP32-CAM\nedge controller + camera"]
   pca["PCA9685 16-channel PWM board\nI2C address 0x40"]
-  imu["Adafruit 10-DOF IMU breakout"]
-  divider["Solar voltage divider\nTBD resistor values + ADC pin"]
+  imu["MPU-6050 IMU breakout"]
+  divider["Solar voltage divider\nplanned ADC input"]
   servos["12x MG90S servos\n3 servos per leg"]
   pc["Host PC / RTX laptop\nRL inference + control panel"]
   gateway["Optional remote gateway\ninternet relay"]
@@ -33,7 +32,7 @@ flowchart LR
   esp -.->|"GPIO14 SDA, GPIO15 SCL\nfallback shared IMU bus"| imu
   pca -->|"PWM channels 0-11\n5 V servo rail"| servos
   panels -->|"scaled net panel voltage"| divider
-  divider -->|"ADC <= 3.3 V\nTBD ADC1 GPIO"| esp
+  divider -->|"ADC <= 3.3 V\nADC1 GPIO or external ADC"| esp
   pc <-->|"Wi-Fi HTTP API\n/status /imu /capture /cmd /rl"| esp
   gateway <-->|"Wi-Fi / LAN robot API proxy"| esp
   pc <-->|"optional remote control path"| gateway
@@ -45,7 +44,7 @@ flowchart LR
 
 | ESP32-CAM | PCA9685 | Notes |
 | --- | --- | --- |
-| `5V` | `VCC` or board logic input | Logic power. Some PCA9685 boards also accept `VCC = 3.3 V`; confirm your board labeling. |
+| `5V` | `VCC` or board logic input | Logic power. Some PCA9685 boards also accept `VCC = 3.3 V`; the correct logic voltage depends on the board variant. |
 | `GND` | `GND` | Must share ground with BEC, servos, IMU, and ESP32. |
 | `GPIO14` | `SDA` | Firmware `Wire.begin(14, 15)`. |
 | `GPIO15` | `SCL` | Firmware scans PCA9685 at `0x40` on this bus. |
@@ -63,17 +62,35 @@ flowchart LR
 The firmware drives PCA9685 channels `0` through `11` for the 12 leg servos.
 Channels `12` through `15` are currently unused.
 
-| Leg | PCA9685 channels | Joint order |
-| --- | --- | --- |
-| Front left `FL` | `0`, `1`, `2` | hip, knee, foot |
-| Front right `FR` | `3`, `4`, `5` | hip, knee, foot |
-| Back left `BL` | `6`, `7`, `8` | hip, knee, foot |
-| Back right `BR` | `9`, `10`, `11` | hip, knee, foot |
+The physical body motor numbers keep their original body locations. The rewired
+PCA9685 channel order is:
 
-Need to confirm: the firmware's active `applyLegSets()` defaults map `BL` to
-channels `6-8` and `BR` to `9-11`, but an older offset comment labels those two
-groups in the opposite order. Use the active map above unless the physical robot
-is already wired differently.
+| PCA9685 channel | Body motor |
+| --- | --- |
+| `0` | `M12` |
+| `1` | `M11` |
+| `2` | `M10` |
+| `3` | `M9` |
+| `4` | `M6` |
+| `5` | `M3` |
+| `6` | `M7` |
+| `7` | `M8` |
+| `8` | `M1` |
+| `9` | `M4` |
+| `10` | `M5` |
+| `11` | `M2` |
+
+The firmware keeps calibration offsets, leg sets, and `/test?motor=` ids keyed
+to logical body motors. It translates those body motor ids to the PCA9685
+channels above when writing PWM output. This motor map has been tested on the
+physical robot, and walking from the control panel is confirmed.
+
+| Leg | Logical body motors | Joint order |
+| --- | --- | --- |
+| Front left `FL` | `M1`, `M2`, `M3` | hip, knee, foot |
+| Front right `FR` | `M4`, `M5`, `M6` | hip, knee, foot |
+| Back left `BL` | `M7`, `M8`, `M9` | hip, knee, foot |
+| Back right `BR` | `M10`, `M11`, `M12` | hip, knee, foot |
 
 ## IMU Wiring
 
@@ -84,7 +101,7 @@ match.
 
 | ESP32-CAM | IMU | Notes |
 | --- | --- | --- |
-| `3.3V` or `5V` | `VIN` / `VCC` | Adafruit 10-DOF breakout; use the board's labeled power input. |
+| `3.3V` or `5V` | `VIN` / `VCC` | MPU-6050 breakout; use the board's labeled power input. |
 | `GND` | `GND` | Common ground. |
 | `GPIO13` | `SDA` | Firmware `Wire1.begin(13, 2)`. |
 | `GPIO2` | `SCL` | Boot-sensitive pin; avoid pulling it into a bad boot state. |
@@ -96,9 +113,10 @@ match.
 | `GPIO14` | `SDA` | Shared with PCA9685 if used. |
 | `GPIO15` | `SCL` | Shared with PCA9685 if used. |
 
-Supported/recognized addresses in firmware include `MPU6050`/compatible at
-`0x68` or `0x69`, `LSM303D` at `0x1D` or `0x1E`, `LSM303DLHC` accel at `0x19`,
-`L3GD20H` at `0x6A` or `0x6B`, and `BMP180` at `0x77`.
+Supported/recognized IMU addresses in firmware are `MPU6050`/compatible at
+`0x68` or `0x69`. The firmware uses the MPU-6050 accelerometer and gyroscope
+only; magnetometer, compass heading, barometer, pressure, and altitude telemetry
+are no longer part of the robot API.
 
 ## ESP32-CAM Camera Pins
 
@@ -128,51 +146,33 @@ installed in the board socket.
 
 ## Solar Voltage Telemetry
 
-Firmware support exists, but it is disabled by default:
+Firmware support exists, but panel-voltage telemetry is disabled by default:
 
 ```cpp
 #define SOLAR_PANEL_ADC_PIN -1
 #define SOLAR_PANEL_VOLTAGE_DIVIDER 2.0f
 ```
 
-To enable telemetry, wire the combined parallel-panel positive bus at the
-charger `PANEL+` input through a resistor divider into an unused ADC1-capable
-ESP32 pin. This measures net solar input voltage before the charger, not battery
-voltage. The ADC input must stay at or below `3.3 V`. Tie the divider ground to
-robot ground. Avoid ADC2 pins while Wi-Fi is active.
+The intended measurement point is the combined parallel-panel positive bus at
+the charger `PANEL+` input, routed through a resistor divider into an
+ADC-capable input. This measures net solar input voltage before the charger, not
+battery voltage. The ADC input must stay at or below `3.3 V`, and the divider
+ground must tie to robot ground. ADC2 pins are avoided while Wi-Fi is active.
 
-Need to confirm: actual ADC pin and resistor values. On an AI-Thinker ESP32-CAM,
-most ADC1 pins are already used by the camera, so the clean options are either
-repurpose an exposed non-camera ADC1 pin if available on your board, or add a
-small I2C ADC module on the existing `GPIO14/GPIO15` I2C bus.
+On an AI-Thinker ESP32-CAM, most ADC1 pins are already used by the camera. The
+clean hardware options are an exposed non-camera ADC1 pin or a small I2C ADC
+module on the existing `GPIO14/GPIO15` I2C bus.
 
 ## Power Wiring Draft
 
 | Source | Destination | Status |
 | --- | --- | --- |
-| Solar panels wired in parallel | Solar charger `PANEL+` / `PANEL-` | Confirmed by user; charger input rating still unknown. |
-| Solar charger `BATT+` / `BATT-` | 2S LiPo | Confirmed by user as a 2S-compatible charger module. |
-| 2S LiPo | 5 V 5 A BEC input | Confirmed from parts, physical connector TBD. |
+| Solar panels wired in parallel | Solar charger `PANEL+` / `PANEL-` | Prototype panel bus. |
+| Solar charger `BATT+` / `BATT-` | 2S LiPo | 2S-compatible charger module. |
+| 2S LiPo | 5 V 5 A BEC input | Prototype battery-to-regulator path. |
 | BEC 5 V output | PCA9685 servo `V+` | Required for servo power. |
-| BEC 5 V output | ESP32-CAM `5V` | Confirmed by user. |
+| BEC 5 V output | ESP32-CAM `5V` | Prototype controller power path. |
 | BEC/servo ground | ESP32-CAM, PCA9685, IMU, voltage divider | Required common ground. |
 
-Add a physical power switch and fuse/polyfuse if they are present; neither is
-currently documented in the repo.
-
-## Unknown Components To Confirm
-
-1. Solar charger module details: max panel input voltage/current and max charge
-   current.
-2. Battery connector and protection: pack connector type, BMS/protection status,
-   fuse/switch location, and whether the charger and BEC are both tied directly
-   to the battery.
-3. PCA9685 board details: whether `VCC` should be `3.3 V` or `5 V` on your exact
-   breakout, and whether `V+` terminal is separate from logic `VCC`.
-4. IMU bus: whether the Adafruit 10-DOF is wired on `GPIO13/GPIO2` or shared
-   `GPIO14/GPIO15`.
-5. Servo physical labels: rear-left `6-8` and rear-right `9-11` are treated as
-   likely correct, but should be verified on the physical robot.
-6. Solar telemetry ADC path: choose an available ESP32 ADC1 pin or add an I2C
-   ADC module, then choose resistor divider values for measuring net panel
-   voltage at the charger `PANEL+` input.
+A physical power switch and fuse/polyfuse are not currently documented in the
+repo.

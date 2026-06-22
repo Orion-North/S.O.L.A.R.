@@ -1,5 +1,5 @@
 const CACHE_NAME = 'solar-mobile-v3';
-const APP_SHELL = ['/', '/index.html', '/style.css', '/main.js', '/manifest.webmanifest', '/icon.svg'];
+const APP_SHELL = ['/', '/index.html', '/style.css', '/main.js', '/manifest.webmanifest'];
 const ROBOT_API_PREFIXES = [
   '/calib',
   '/capture',
@@ -7,6 +7,7 @@ const ROBOT_API_PREFIXES = [
   '/debug',
   '/estop',
   '/flash',
+  '/charge-rest',
   '/imu',
   '/i2c',
   '/obs',

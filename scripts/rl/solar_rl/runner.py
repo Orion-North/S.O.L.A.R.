@@ -14,9 +14,14 @@ from .policy import (
     HoldStillPolicy,
     Policy,
     RslRlImuSpeedPolicy,
+    RslRlNoImuSolarChargePolicy,
     RslRlSolarChargePolicy,
     SolarSeekingPolicy,
 )
+
+
+IMU_RL_POLICIES = {"imu-speed-rl", "solar-charge-imu-rl"}
+SERVO_RL_POLICIES = {*IMU_RL_POLICIES, "solar-charge-rl"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,10 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=2.0, help="HTTP timeout in seconds.")
     parser.add_argument(
         "--policy",
-        choices=["cautious-search", "hold-still", "solar-seek", "imu-speed-rl", "solar-charge-rl"],
+        choices=[
+            "cautious-search",
+            "hold-still",
+            "solar-seek",
+            "imu-speed-rl",
+            "solar-charge-rl",
+            "solar-charge-imu-rl",
+        ],
         default="cautious-search",
     )
-    parser.add_argument("--checkpoint", default="", help="Path to a trained RSL-RL checkpoint for imu-speed-rl.")
+    parser.add_argument("--checkpoint", default="", help="Path to a trained RSL-RL checkpoint for trained policies.")
     parser.add_argument(
         "--solar-sunny-voltage",
         type=float,
@@ -69,6 +81,8 @@ def make_policy(
     if name == "imu-speed-rl":
         return RslRlImuSpeedPolicy(checkpoint or None, output_scale=output_scale)
     if name == "solar-charge-rl":
+        return RslRlNoImuSolarChargePolicy(checkpoint or None, output_scale=output_scale)
+    if name == "solar-charge-imu-rl":
         return RslRlSolarChargePolicy(checkpoint or None, output_scale=output_scale)
     return CautiousSearchPolicy()
 
@@ -120,11 +134,15 @@ def log_event(log_file, observation: Observation, params: dict[str, str], motion
     log_file.flush()
 
 
-def rl_safety_stop(observation: Observation, max_tilt_deg: float, max_imu_age_ms: float) -> str | None:
+def rl_safety_stop(
+    observation: Observation, max_tilt_deg: float, max_imu_age_ms: float, require_imu: bool
+) -> str | None:
     if observation.emergency_stop:
         return "estop"
     if not observation.torque_enabled:
         return "torque_off"
+    if not require_imu:
+        return None
     if observation.imu is None:
         return "imu_missing"
     if float(observation.imu.get("age_ms", 999999)) > max_imu_age_ms:
@@ -142,7 +160,7 @@ def rl_safety_stop(observation: Observation, max_tilt_deg: float, max_imu_age_ms
 def run(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.rate_hz == 0:
-        args.rate_hz = 50.0 if args.policy in {"imu-speed-rl", "solar-charge-rl"} else 2.0
+        args.rate_hz = 50.0 if args.policy in SERVO_RL_POLICIES else 2.0
     if args.rate_hz <= 0:
         raise SystemExit("--rate-hz must be greater than 0")
 
@@ -171,23 +189,29 @@ def run(argv: Sequence[str] | None = None) -> int:
             client.get_text("/torque", {"state": 1})
         while deadline is None or time.monotonic() < deadline:
             loop_started = time.monotonic()
-            observation = observe(client, args.with_camera, with_imu=args.policy in {"imu-speed-rl", "solar-charge-rl"})
+            requires_imu = args.policy in IMU_RL_POLICIES
+            observation = observe(client, args.with_camera, with_imu=requires_imu)
             action = policy.act(observation).bounded()
 
             safety_reason = None
             if isinstance(action, RlServoAction):
-                safety_reason = rl_safety_stop(observation, args.rl_max_tilt_deg, args.rl_max_imu_age_ms)
+                safety_reason = rl_safety_stop(
+                    observation, args.rl_max_tilt_deg, args.rl_max_imu_age_ms, require_imu=requires_imu
+                )
                 if safety_reason is not None:
                     action = RlServoAction(tuple(0.0 for _ in range(12)), output_scale=0.0)
                 params = action.as_rl_params()
                 print(
                     "mode=rl scale={scale} safety={safety} robot_mode={robot_mode} "
-                    "status_ms={status_ms:.0f} imu_ms={imu_ms:.0f}".format(
+                    "status_ms={status_ms:.0f} imu_ms={imu_ms:.0f} solar_v={solar_v}".format(
                         scale=params["scale"],
                         safety=safety_reason or "ok",
                         robot_mode=observation.mode,
                         status_ms=observation.status_latency_ms or 0.0,
                         imu_ms=observation.imu_latency_ms or 0.0,
+                        solar_v=f"{observation.solar_voltage_v:.3f}"
+                        if observation.solar_voltage_v is not None
+                        else "n/a",
                     )
                 )
             else:

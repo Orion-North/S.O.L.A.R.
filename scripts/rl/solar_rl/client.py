@@ -17,9 +17,9 @@ class RobotHttpError(RuntimeError):
 class RobotClient:
     """Small stdlib HTTP client for the ESP32 robot API."""
 
-    _IMU_BINARY_FORMAT = "<BBHIII12f"
+    _IMU_BINARY_FORMAT = "<BBHIII8f"
     _IMU_BINARY_SIZE = struct.calcsize(_IMU_BINARY_FORMAT)
-    _OBS_BINARY_FORMAT = "<BBBBIIfIII12f"
+    _OBS_BINARY_FORMAT = "<BBBBIIfIII8f"
     _OBS_BINARY_SIZE = struct.calcsize(_OBS_BINARY_FORMAT)
     _MODE_BY_CODE = {
         1: "stand",
@@ -32,6 +32,8 @@ class RobotClient:
         8: "dance",
         9: "flip",
         10: "rl",
+        11: "wave",
+        12: "charge_rest",
     }
 
     def __init__(self, base_url: str, api_token: str = "", timeout: float = 2.0) -> None:
@@ -149,7 +151,7 @@ class RobotClient:
 
         unpacked = struct.unpack(self._IMU_BINARY_FORMAT, payload)
         version, flags, rate_hz, seq, sample_ms, age_ms, *values = unpacked
-        ax, ay, az, gx, gy, gz, mx, my, mz, roll, pitch, heading = values
+        ax, ay, az, gx, gy, gz, roll, pitch = values
         return {
             "version": version,
             "seq": seq,
@@ -158,14 +160,10 @@ class RobotClient:
             "rate_hz": rate_hz,
             "accel_ready": bool(flags & 0x01),
             "gyro_ready": bool(flags & 0x02),
-            "mag_ready": bool(flags & 0x04),
-            "bmp180_ready": bool(flags & 0x08),
             "accel_g": [ax, ay, az],
             "gyro_dps": [gx, gy, gz],
-            "mag_ut": [mx, my, mz],
             "roll_deg": roll,
             "pitch_deg": pitch,
-            "heading_deg": heading,
         }
 
     def observation_binary(self) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -175,11 +173,9 @@ class RobotClient:
 
         unpacked = struct.unpack(self._OBS_BINARY_FORMAT, payload)
         version, flags, mode_code, _reserved, uptime_ms, last_cmd_ms_ago, solar_voltage, imu_seq, sample_ms, age_ms, *values = unpacked
-        ax, ay, az, gx, gy, gz, mx, my, mz, roll, pitch, heading = values
+        ax, ay, az, gx, gy, gz, roll, pitch = values
         accel_ready = bool(flags & 0x08)
         gyro_ready = bool(flags & 0x10)
-        mag_ready = bool(flags & 0x20)
-        bmp_ready = bool(flags & 0x40)
         status = {
             "version": version,
             "mode": self._MODE_BY_CODE.get(mode_code, "unknown"),
@@ -189,16 +185,13 @@ class RobotClient:
             "torque_enabled": bool(flags & 0x02),
             "solar_panel_configured": bool(flags & 0x04),
             "solar_panel_voltage_v": solar_voltage if flags & 0x04 else None,
-            "imu_ready": accel_ready or gyro_ready or mag_ready,
+            "imu_ready": accel_ready or gyro_ready,
             "accel_ready": accel_ready,
             "gyro_ready": gyro_ready,
-            "mag_ready": mag_ready,
-            "bmp180_ready": bmp_ready,
             "imu_seq": imu_seq,
             "imu_age_ms": age_ms,
             "roll_deg": roll,
             "pitch_deg": pitch,
-            "heading_deg": heading,
         }
         imu = {
             "version": version,
@@ -208,14 +201,10 @@ class RobotClient:
             "rate_hz": 50,
             "accel_ready": accel_ready,
             "gyro_ready": gyro_ready,
-            "mag_ready": mag_ready,
-            "bmp180_ready": bmp_ready,
             "accel_g": [ax, ay, az],
             "gyro_dps": [gx, gy, gz],
-            "mag_ut": [mx, my, mz],
             "roll_deg": roll,
             "pitch_deg": pitch,
-            "heading_deg": heading,
         }
         return status, imu
 

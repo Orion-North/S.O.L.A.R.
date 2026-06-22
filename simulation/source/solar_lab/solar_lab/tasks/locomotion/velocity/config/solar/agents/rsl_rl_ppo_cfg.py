@@ -75,3 +75,18 @@ class SolarChargePPORunnerCfg(SolarFlatPPORunnerCfg):
         critic_hidden_dims=[256, 128, 128],
         activation="elu",
     )
+
+
+@configclass
+class SolarChargeNoImuPPORunnerCfg(SolarFlatPPORunnerCfg):
+    max_iterations = 2500
+    save_interval = 100
+    experiment_name = "solar_flat_solar_charge_no_imu"
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=0.8,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[256, 128, 128],
+        critic_hidden_dims=[256, 128, 128],
+        activation="elu",
+    )

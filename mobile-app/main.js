@@ -30,7 +30,10 @@ const translations = {
     sit: 'Sit',
     stretch: 'Stretch',
     wag: 'Wag',
+    wave: 'Wave',
     dance: 'Dance',
+    chargeRest: 'Charge rest',
+    charge_rest: 'Charge rest',
     light: 'Light',
     stand: 'Stand',
     mode: 'Mode',
@@ -78,7 +81,10 @@ const translations = {
     sit: 'Assis',
     stretch: 'Etirer',
     wag: 'Remuer',
+    wave: 'Saluer',
     dance: 'Danser',
+    chargeRest: 'Repos charge',
+    charge_rest: 'Repos charge',
     light: 'Lumiere',
     stand: 'Debout',
     mode: 'Mode',
@@ -126,7 +132,10 @@ const translations = {
     sit: 'Sentar',
     stretch: 'Estirar',
     wag: 'Mover',
+    wave: 'Saludar',
     dance: 'Bailar',
+    chargeRest: 'Reposo carga',
+    charge_rest: 'Reposo carga',
     light: 'Luz',
     stand: 'Parar',
     mode: 'Modo',
@@ -185,6 +194,7 @@ const connectButton = document.getElementById('connect-button');
 const authReadout = document.getElementById('auth-readout');
 const flashButton = document.getElementById('flash-button');
 const standButton = document.getElementById('stand-button');
+const chargeRestButton = document.getElementById('charge-rest-button');
 const controlButtons = [
   liveButton,
   estopBtn,
@@ -193,6 +203,7 @@ const controlButtons = [
   speedSlider,
   flashButton,
   standButton,
+  chargeRestButton,
   ...document.querySelectorAll('.drive-btn'),
   ...document.querySelectorAll('[data-mode]'),
 ];
@@ -338,8 +349,7 @@ async function refreshStatus() {
     if (!status.imu_ready) {
       imuReadout.textContent = '--';
     } else if (status.accel_ready) {
-      const heading = status.mag_ready ? Number(status.heading_deg || 0).toFixed(0) : 'M--';
-      imuReadout.textContent = `${Number(status.roll_deg || 0).toFixed(0)}/${Number(status.pitch_deg || 0).toFixed(0)}/${heading}`;
+      imuReadout.textContent = `${Number(status.roll_deg || 0).toFixed(0)}/${Number(status.pitch_deg || 0).toFixed(0)}`;
     } else if (status.gyro_ready) {
       imuReadout.textContent = 'GYRO';
     } else {
@@ -491,8 +501,21 @@ speedSlider.addEventListener('input', () => {
 
 document.querySelectorAll('[data-mode]').forEach((button) => {
   button.addEventListener('click', () => {
+    clearDriveUi();
     requestRobot('/cmd', { mode: button.dataset.mode }).catch(() => setAuthState('offline'));
   });
+});
+
+chargeRestButton.addEventListener('click', async () => {
+  if (!state.authenticated) return;
+  clearDriveUi();
+  const response = await requestRobot('/charge-rest').catch(() => {
+    setAuthState('offline');
+    return null;
+  });
+  if (!response || !response.ok) return;
+  modeReadout.textContent = t('charge_rest');
+  heroMode.textContent = t('charge_rest');
 });
 
 flashButton.addEventListener('click', () => {

@@ -226,3 +226,88 @@ class SolarFlatSolarChargeEnvCfg_PLAY(SolarFlatSolarChargeEnvCfg):
 
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.0
+
+
+@configclass
+class SolarFlatSolarChargeNoImuEnvCfg(SolarFlatNoFeedbackEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        solar_params = {
+            "sunny_voltage": 1.0,
+            "dark_voltage": 0.15,
+            "sun_center_x": 1.2,
+            "sun_center_y": 0.0,
+            "sun_radius": 0.75,
+        }
+
+        self.episode_length_s = 12.0
+        self.observations.policy.velocity_commands = None
+        self.observations.policy.phase = ObsTerm(
+            func=solar_mdp.phase_clock, params={"cycle_time": 0.75, "harmonics": 2}
+        )
+        self.observations.policy.solar_voltage = ObsTerm(
+            func=solar_mdp.solar_panel_voltage,
+            params={"normalize_by": 1.0, **solar_params},
+            clip=(0.0, 1.25),
+        )
+
+        self.actions.joint_pos.scale = 0.18
+        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = None
+        self.commands.base_velocity.debug_vis = False
+
+        # With no heading/IMU observation, start roughly facing the solar patch.
+        self.events.reset_base.params["pose_range"] = {
+            "x": (-0.15, 0.15),
+            "y": (-0.20, 0.20),
+            "yaw": (-0.35, 0.35),
+        }
+
+        self.rewards.track_lin_vel_xy_exp = RewTerm(
+            func=solar_mdp.solar_search_velocity_reward,
+            weight=5.0,
+            params={"target_voltage": 0.85, "max_reward": 0.7, **solar_params},
+        )
+        self.rewards.forward_speed_metric = RewTerm(func=solar_mdp.forward_velocity_b_unclipped, weight=0.005)
+        self.rewards.solar_charge = RewTerm(
+            func=solar_mdp.solar_charge_reward,
+            weight=7.0,
+            params={"target_voltage": 0.85, **solar_params},
+        )
+        self.rewards.solar_rest = RewTerm(
+            func=solar_mdp.solar_rest_reward,
+            weight=8.0,
+            params={"target_voltage": 0.85, "sit_height": 0.085, "height_tolerance": 0.035, **solar_params},
+        )
+        self.rewards.solar_charging_motion_l2 = RewTerm(
+            func=solar_mdp.solar_charging_motion_l2,
+            weight=-2.5,
+            params={"target_voltage": 0.85, **solar_params},
+        )
+        self.rewards.joint_power_l1 = RewTerm(func=solar_mdp.joint_power_l1, weight=-0.002)
+        self.rewards.track_ang_vel_z_exp = RewTerm(func=solar_mdp.yaw_rate_l2, weight=-0.04)
+        self.rewards.lateral_velocity_l2 = RewTerm(func=solar_mdp.lateral_velocity_l2, weight=-0.20)
+        self.rewards.reverse_velocity_l2 = RewTerm(func=solar_mdp.reverse_velocity_l2, weight=-0.8)
+        self.rewards.feet_air_time.weight = 0.03
+        self.rewards.dof_torques_l2.weight = -0.0004
+        self.rewards.dof_acc_l2.weight = -2.0e-7
+        self.rewards.action_rate_l2.weight = -0.010
+
+        self.terminations.low_base = DoneTerm(
+            func=base_mdp.root_height_below_minimum,
+            params={"minimum_height": 0.045, "asset_cfg": SceneEntityCfg("robot")},
+        )
+
+
+@configclass
+class SolarFlatSolarChargeNoImuEnvCfg_PLAY(SolarFlatSolarChargeNoImuEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 2.0

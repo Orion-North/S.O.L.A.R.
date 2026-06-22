@@ -8,19 +8,4 @@ I also continued training the reinforcement learning policy. The RL work is stil
 
 One challenge this week was making sure the rebuilt robot still had room for the panels, charging circuit, and sensor wiring. The robot is now more complete physically, but the next step is making sure the new voltage sensor data is reliable and useful in the code.
 
-**Evidence:**
-
-![Voltage sensor test with rebuilt solar robot](assets/week2_voltage_sensor_test.jpg)
-
-This photo shows the rebuilt robot with the solar panels attached while the voltage sensor setup is being tested with a multimeter.
-
-![Rebuilt robot with solar panels and charging circuit attached](assets/week2_rebuilt_robot_solar_panels.jpg)
-
-This photo shows the robot rebuilt with the solar panels and charging circuit attached to the frame.
-
-**Next steps:**
-
-- Test and calibrate the voltage sensor reading
-- Make the solar voltage reading available to the host processor
-- Use the solar voltage data as feedback for the RL system
-- Continue training and testing the RL policy
+The rebuilt robot had the solar panels and charging circuit attached to the frame while the voltage sensor setup was tested with a multimeter.

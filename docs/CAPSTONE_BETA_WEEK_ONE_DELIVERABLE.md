@@ -10,15 +10,4 @@ On the software side, the recent code work supports the RL system and future sol
 
 One issue this week was that a component was fried from an earlier problem. I replaced it, so it did not become a major setback.
 
-**Evidence:**
-
-![Solar panels and completed charging circuit](assets/solar_panels_charging_circuit.jpg)
-
-This photo shows the working solar panels connected to the completed charging circuit and being measured with a multimeter.
-
-**Next steps:**
-
-- Mount the solar panels and charging circuit onto the robot
-- Add a voltage sensor for the solar panels
-- Make the voltage reading accessible to the host processor
-- Continue training and testing the RL policy
+The working solar panels were connected to the completed charging circuit and measured with a multimeter.
