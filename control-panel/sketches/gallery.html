@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S.O.L.A.R. Control Deck // Design Showcase & Flight Decks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #090c12;
+      color: #f1f5f9;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .nav-bar {
+      height: 48px;
+      background: #0f141e;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .options-pills {
+      display: flex;
+      gap: 6px;
+    }
+    .pill-btn {
+      background: #192231;
+      border: 1px solid #283548;
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .pill-btn:hover {
+      color: #f1f5f9;
+      border-color: #38bdf8;
+    }
+    .pill-btn.active {
+      background: #38bdf8;
+      color: #000;
+      border-color: #38bdf8;
+      font-weight: 700;
+    }
+    .preview-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      height: calc(100% - 48px);
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="nav-bar">
+    <div class="title">
+      <span>S.O.L.A.R. Operations // Flight Decks</span>
+    </div>
+    <div class="options-pills">
+      <button class="pill-btn active" onclick="loadVariant('001-restrained-blueprint', this)">01. Aerospace Telemetry (Desktop)</button>
+      <button class="pill-btn" onclick="loadVariant('002-tactical-tablet-aerospace', this)">02. Tactical Tablet HUD (Aerospace)</button>
+      <button class="pill-btn" onclick="loadVariant('002-tactical-field-hud', this)">03. Tactical Field HUD (Original)</button>
+      <button class="pill-btn" onclick="loadVariant('003-modular-lab-studio', this)">04. Modular Lab Studio</button>
+    </div>
+  </div>
+  <iframe id="viewport" class="preview-frame" src="001-restrained-blueprint/index.html"></iframe>
+  <script>
+    function loadVariant(dir, btn) {
+      document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('viewport').src = dir + '/index.html';
+    }
+  </script>
+</body>
+</html>

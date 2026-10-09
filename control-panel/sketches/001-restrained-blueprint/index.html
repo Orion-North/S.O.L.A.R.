@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S.O.L.A.R. Control Deck // Aerospace Telemetry Console</title>
+  <style>
+    :root {
+      --bg: #090d13;
+      --panel: #0f151f;
+      --panel-elevated: #151d2b;
+      --panel-highlight: #1b2536;
+      --border: #1e293b;
+      --border-focus: #38bdf8;
+      --grid: rgba(56, 189, 248, 0.035);
+      --text-main: #f1f5f9;
+      --text-muted: #8493a8;
+      --text-faint: #475569;
+      --cyan: #38bdf8;
+      --cyan-dim: rgba(56, 189, 248, 0.12);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.12);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.12);
+      --crimson: #ef4444;
+      --crimson-dim: rgba(239, 68, 68, 0.15);
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 20px 20px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      height: 54px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 16px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+
+    .brand-cluster {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge-node {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 3px;
+      letter-spacing: 0.06em;
+    }
+
+    .brand-title {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .ip-conn-cluster {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel-elevated);
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .ip-input {
+      background: #090d13;
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 3px;
+      width: 120px;
+      outline: none;
+    }
+    .ip-input:focus { border-color: var(--cyan); }
+
+    .btn-conn {
+      background: var(--panel-highlight);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-conn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+    .mode-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      font-size: 10px;
+    }
+    .mode-pill.sim { border-color: var(--amber); color: var(--amber); }
+    .mode-pill.live { border-color: var(--emerald); color: var(--emerald); }
+
+    .telemetry-strip {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .tel-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tel-label {
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 9px;
+    }
+
+    .tel-val {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .indicator-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .indicator-dot.alert {
+      background: var(--crimson);
+      box-shadow: 0 0 8px var(--crimson);
+      animation: pulse 0.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .estop-guard {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+
+    .btn-estop {
+      background: var(--crimson);
+      color: #fff;
+      border: none;
+      padding: 6px 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .btn-estop:hover { background: #dc2626; }
+    .btn-estop:active { transform: scale(0.96); }
+
+    .btn-clear-estop {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .btn-clear-estop:hover { color: var(--text-main); border-color: var(--text-muted); }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 310px 1fr 340px;
+      grid-template-rows: 1fr;
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+
+    .column {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .card-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-title::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: var(--cyan);
+    }
+
+    .card-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .attitude-gauge-box {
+      height: 145px;
+      background: #05080d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .attitude-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .gauge-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .metric-pill {
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      text-align: center;
+    }
+    .metric-pill .lbl { font-size: 9px; color: var(--text-faint); display: block; text-transform: uppercase; }
+    .metric-pill .val { font-size: 13px; font-weight: 700; color: var(--cyan); }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .leg-badge {
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .leg-badge.grounded {
+      border-color: rgba(16, 185, 129, 0.45);
+      background: rgba(16, 185, 129, 0.05);
+    }
+    .leg-badge.swing {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.05);
+    }
+    .leg-badge .name { font-size: 11px; font-weight: 700; color: var(--text-main); }
+    .leg-badge .state {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+    .leg-badge.grounded .state { background: var(--emerald-dim); color: var(--emerald); }
+    .leg-badge.swing .state { background: var(--amber-dim); color: var(--amber); }
+
+    .pose-btn-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .btn-blueprint {
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 7px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-blueprint:hover { border-color: var(--cyan); background: var(--cyan-dim); }
+    .btn-blueprint.active { border-color: var(--cyan); background: var(--cyan); color: #000; font-weight: 700; }
+
+    .viewport-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #030508;
+      position: relative;
+      min-height: 0;
+    }
+
+    .hud-bar {
+      height: 32px;
+      background: rgba(15, 21, 31, 0.9);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      z-index: 10;
+    }
+
+    .cam-stage {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #0a111a 0%, #020406 80%);
+    }
+
+    .cam-stream-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .cam-stream-img.active { display: block; }
+
+    .reticle-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .cam-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      z-index: 2;
+    }
+
+    .hud-overlay-data {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--cyan);
+      pointer-events: none;
+      z-index: 6;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    }
+
+    .sequencer-dock {
+      height: 190px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .timeline-strip {
+      flex: 1;
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      align-items: center;
+    }
+
+    .seq-step {
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 4px;
+      min-width: 95px;
+      font-family: var(--font-mono);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      transition: all 0.15s;
+    }
+    .seq-step.current {
+      border-color: var(--emerald);
+      background: rgba(16, 185, 129, 0.12);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+    .seq-step .step-num { font-size: 9px; color: var(--text-faint); }
+    .seq-step .cmd { font-size: 11px; font-weight: 700; color: var(--text-main); }
+    .seq-step .dur { font-size: 10px; color: var(--text-muted); }
+
+    .wasd-tactical {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px;
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .wasd-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .key-btn {
+      width: 44px;
+      height: 44px;
+      background: #090d13;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .key-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    .key-btn.active {
+      background: var(--cyan);
+      color: #000;
+      border-color: var(--cyan);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+    .key-btn span.sub { font-size: 8px; color: inherit; opacity: 0.7; }
+
+    .joint-matrix {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .joint-leg-group {
+      background: var(--panel-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+    }
+
+    .leg-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .joint-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 3px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    .joint-bar .lbl { width: 30px; color: var(--text-muted); font-size: 9px; }
+    .joint-bar .track {
+      flex: 1;
+      height: 5px;
+      background: #06090e;
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .joint-bar .fill {
+      height: 100%;
+      background: var(--cyan);
+      border-radius: 2px;
+      transition: width 0.1s ease;
+    }
+    .joint-bar .deg { width: 34px; text-align: right; color: var(--text-main); font-weight: 600; }
+
+    .term-box {
+      background: #05080c;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      height: 105px;
+      overflow-y: auto;
+      padding: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+    .term-entry { margin-bottom: 2px; }
+    .term-entry.ok { color: var(--emerald); }
+    .term-entry.warn { color: var(--amber); }
+    .term-entry.err { color: var(--crimson); }
+
+    footer {
+      height: 28px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .alarm-banner {
+      display: none;
+      background: var(--crimson);
+      color: #fff;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      padding: 4px;
+      text-transform: uppercase;
+      animation: blink 0.8s infinite;
+      z-index: 1000;
+    }
+    .alarm-banner.active { display: block; }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body>
+
+  <div id="alarm-banner" class="alarm-banner">
+    ⚠️ EMERGENCY STOP ENGAGED // TORQUE DISENGAGED // ALL ACTUATORS SAFE-HALTED
+  </div>
+
+  <header>
+    <div class="brand-cluster">
+      <span class="badge-node">SOLAR-01</span>
+      <div>
+        <div class="brand-title">
+          <span>Aerospace Telemetry Console</span>
+          <span id="mode-badge" class="mode-pill sim" onclick="toggleSimMode()">SIM MODE</span>
+        </div>
+        <div class="brand-subtitle">Quadruped Flight Operations Deck // Rev 3.4</div>
+      </div>
+    </div>
+
+    <div class="ip-conn-cluster">
+      <span>TARGET:</span>
+      <input type="text" id="target-ip" class="ip-input" value="192.168.1.91" />
+      <button class="btn-conn" id="btn-link" onclick="toggleLink()">CONNECT</button>
+    </div>
+
+    <div class="telemetry-strip">
+      <div class="tel-item">
+        <span class="indicator-dot" id="link-dot"></span>
+        <span class="tel-label">RTT:</span>
+        <span class="tel-val" id="link-val">22ms</span>
+      </div>
+      <div class="tel-item">
+        <span class="tel-label">BAT:</span>
+        <span class="tel-val" id="bat-val" style="color: var(--emerald);">8.24V [89%]</span>
+      </div>
+      <div class="tel-item">
+        <span class="tel-label">TORQUE:</span>
+        <span class="tel-val" id="torque-state" style="color: var(--emerald);">ARMED</span>
+      </div>
+    </div>
+
+    <div class="estop-guard">
+      <button class="btn-estop" id="btn-estop" onclick="triggerEstop()">E-STOP</button>
+      <button class="btn-clear-estop" id="btn-clear-estop" onclick="clearEstop()">RESET</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Column 1: IMU Attitude, Gait Phase, Stance Modes -->
+    <section class="column">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Attitude Telemetry (IMU)</div>
+          <span class="tel-val" style="font-size: 10px; color: var(--cyan);" id="imu-rate">50 Hz</span>
+        </div>
+        <div class="card-body">
+          <div class="attitude-gauge-box">
+            <svg class="attitude-svg" viewBox="0 0 200 120">
+              <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#0c2340" />
+                  <stop offset="100%" stop-color="#162a45" />
+                </linearGradient>
+                <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#2b180d" />
+                  <stop offset="100%" stop-color="#190e06" />
+                </linearGradient>
+              </defs>
+              <g id="horizon-group" transform="translate(100, 60) rotate(0)">
+                <rect x="-120" y="-90" width="240" height="90" fill="url(#skyGrad)" opacity="0.5" />
+                <rect x="-120" y="0" width="240" height="90" fill="url(#groundGrad)" opacity="0.5" />
+                <line x1="-80" y1="0" x2="80" y2="0" stroke="#38bdf8" stroke-width="1.5" />
+                <line x1="-30" y1="-18" x2="30" y2="-18" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" />
+                <line x1="-20" y1="-36" x2="20" y2="-36" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" />
+                <line x1="-30" y1="18" x2="30" y2="18" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" />
+                <line x1="-20" y1="36" x2="20" y2="36" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" />
+              </g>
+              <circle cx="100" cy="60" r="3" fill="#f59e0b" />
+              <path d="M 70 60 L 90 60 M 110 60 L 130 60" stroke="#f59e0b" stroke-width="2" />
+            </svg>
+          </div>
+
+          <div class="gauge-metrics">
+            <div class="metric-pill"><span class="lbl">Pitch</span><span class="val" id="pitch-val">+1.2°</span></div>
+            <div class="metric-pill"><span class="lbl">Roll</span><span class="val" id="roll-val">-0.4°</span></div>
+            <div class="metric-pill"><span class="lbl">Yaw</span><span class="val" id="yaw-val">184.2°</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Gait Contact Phase</div>
+          <span class="tel-val" style="font-size: 10px; color: var(--emerald);" id="gait-name">TROT CYCLIC</span>
+        </div>
+        <div class="card-body">
+          <div class="contact-grid">
+            <div class="leg-badge grounded" id="leg-fl"><span class="name">FL [L1]</span><span class="state">PLANTED</span></div>
+            <div class="leg-badge swing" id="leg-fr"><span class="name">FR [R1]</span><span class="state">SWING</span></div>
+            <div class="leg-badge swing" id="leg-bl"><span class="name">BL [L2]</span><span class="state">SWING</span></div>
+            <div class="leg-badge grounded" id="leg-br"><span class="name">BR [R2]</span><span class="state">PLANTED</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="flex: 1; border-bottom: none;">
+        <div class="card-header">
+          <div class="card-title">Stance & Recovery Modes</div>
+        </div>
+        <div class="card-body">
+          <div class="pose-btn-grid">
+            <button class="btn-blueprint active" onclick="setStance(this, 'stand')"><span>STAND</span><span style="color:var(--cyan);">STD</span></button>
+            <button class="btn-blueprint" onclick="setStance(this, 'sit')"><span>SIT</span><span style="color:var(--text-muted);">REST</span></button>
+            <button class="btn-blueprint" onclick="setStance(this, 'turtle')"><span>TURTLE</span><span style="color:var(--amber);">SAFE</span></button>
+            <button class="btn-blueprint" onclick="setStance(this, 'stretch')"><span>STRETCH</span><span style="color:var(--text-muted);">CAL</span></button>
+            <button class="btn-blueprint" onclick="setStance(this, 'dance')"><span>DANCE</span><span style="color:var(--text-muted);">ROUT</span></button>
+            <button class="btn-blueprint" onclick="setStance(this, 'flip')"><span>RECOVER</span><span style="color:var(--crimson);">FLIP</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 2: Viewport & Autonomous Sequence Dock -->
+    <section class="column">
+      <div class="viewport-container">
+        <div class="hud-bar">
+          <span>ESP32-CAM // OV2640 OPTICAL RECON</span>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn-conn" style="padding: 2px 6px; font-size: 9px;" onclick="toggleLiveFeed()" id="btn-feed">FEED: LIVE</button>
+            <button class="btn-conn" style="padding: 2px 6px; font-size: 9px;" onclick="toggleFlash()" id="btn-flash">FLASH: OFF</button>
+            <span id="fps-stat">25 FPS • 42ms RTT</span>
+          </div>
+        </div>
+        <div class="cam-stage">
+          <img id="cam-stream-img" class="cam-stream-img" alt="Stream" />
+          <svg class="reticle-svg" viewBox="0 0 400 300">
+            <path d="M 20 40 L 20 20 L 40 20" stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6" />
+            <path d="M 380 40 L 380 20 L 360 20" stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6" />
+            <path d="M 20 260 L 20 280 L 40 280" stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6" />
+            <path d="M 380 260 L 380 280 L 360 280" stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6" />
+            <circle cx="200" cy="150" r="30" stroke="#38bdf8" stroke-width="1" stroke-dasharray="6 4" fill="none" opacity="0.4" />
+            <line x1="160" y1="150" x2="190" y2="150" stroke="#38bdf8" stroke-width="1.5" opacity="0.7" />
+            <line x1="210" y1="150" x2="240" y2="150" stroke="#38bdf8" stroke-width="1.5" opacity="0.7" />
+            <line x1="200" y1="110" x2="200" y2="140" stroke="#38bdf8" stroke-width="1.5" opacity="0.7" />
+            <line x1="200" y1="160" x2="200" y2="190" stroke="#38bdf8" stroke-width="1.5" opacity="0.7" />
+            <circle cx="200" cy="150" r="2" fill="#38bdf8" />
+          </svg>
+
+          <div class="cam-placeholder" id="cam-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.5">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            <span>[ ESP32 OPTICAL LINK ACTIVE ]</span>
+          </div>
+
+          <div class="hud-overlay-data">
+            <span>VECTOR: [VX: <span id="vx-stat">0.0</span> | WZ: <span id="wz-stat">0.0</span>]</span>
+            <span>CADENCE: <span id="cad-stat">150ms</span> // PCA9685 OK</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sequencer-dock">
+        <div class="card-header">
+          <div class="card-title">Autonomous Mission Sequencer</div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-conn" id="btn-run-seq" onclick="runSequence()">RUN QUEUE</button>
+            <button class="btn-conn" style="color: var(--amber);" onclick="addSequenceStep()">+ STEP</button>
+            <button class="btn-conn" style="color: var(--crimson);" onclick="clearSequence()">CLEAR</button>
+          </div>
+        </div>
+        <div class="timeline-strip" id="timeline-strip">
+          <div class="seq-step" data-step="0"><span class="step-num">STEP 01</span><span class="cmd">WALK_FWD</span><span class="dur">1500ms</span></div>
+          <div class="seq-step" data-step="1"><span class="step-num">STEP 02</span><span class="cmd">TURN_LEFT</span><span class="dur">800ms</span></div>
+          <div class="seq-step" data-step="2"><span class="step-num">STEP 03</span><span class="cmd">WALK_FWD</span><span class="dur">2000ms</span></div>
+          <div class="seq-step" data-step="3"><span class="step-num">STEP 04</span><span class="cmd">STAND</span><span class="dur">600ms</span></div>
+          <div class="seq-step" data-step="4"><span class="step-num">STEP 05</span><span class="cmd">DANCE</span><span class="dur">1200ms</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3: Locomotion WASD, 12-DOF Kinematic Array, Logs -->
+    <section class="column">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Locomotion Vector Drive</div>
+          <span class="tel-val" style="font-size: 10px; color: var(--text-muted);" id="step-ms">150 ms / cycle</span>
+        </div>
+        <div class="card-body">
+          <div class="wasd-tactical">
+            <button class="key-btn" id="key-w"><span class="sub">▲</span>W</button>
+            <div class="wasd-row">
+              <button class="key-btn" id="key-a"><span class="sub">◀</span>A</button>
+              <button class="key-btn" id="key-s"><span class="sub">▼</span>S</button>
+              <button class="key-btn" id="key-d"><span class="sub">▶</span>D</button>
+            </div>
+          </div>
+          <div style="margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; margin-bottom: 4px; color: var(--text-muted);">
+              <span>Gait Cadence</span>
+              <span id="cadence-val" style="color: var(--cyan);">150ms</span>
+            </div>
+            <input type="range" min="40" max="300" value="150" style="width: 100%; accent-color: var(--cyan);" oninput="updateCadence(this.value)" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">12-DOF Kinematic Array</div>
+          <span class="tel-val" style="font-size: 10px; color: var(--emerald);">HEALTHY</span>
+        </div>
+        <div class="card-body" style="padding: 8px;">
+          <div class="joint-matrix">
+            <!-- Front Left -->
+            <div class="joint-leg-group">
+              <div class="leg-title"><span>FRONT LEFT (FL)</span><span>41.2°C</span></div>
+              <div class="joint-bar"><span class="lbl">HIP</span><div class="track"><div class="fill" id="bar-fl-hip" style="width: 50%;"></div></div><span class="deg" id="deg-fl-hip">90.0°</span></div>
+              <div class="joint-bar"><span class="lbl">KNE</span><div class="track"><div class="fill" id="bar-fl-kne" style="width: 62%;"></div></div><span class="deg" id="deg-fl-kne">112.5°</span></div>
+              <div class="joint-bar"><span class="lbl">ANK</span><div class="track"><div class="fill" id="bar-fl-ank" style="width: 41%;"></div></div><span class="deg" id="deg-fl-ank">74.2°</span></div>
+            </div>
+            <!-- Front Right -->
+            <div class="joint-leg-group">
+              <div class="leg-title"><span>FRONT RIGHT (FR)</span><span>40.9°C</span></div>
+              <div class="joint-bar"><span class="lbl">HIP</span><div class="track"><div class="fill" id="bar-fr-hip" style="width: 50%;"></div></div><span class="deg" id="deg-fr-hip">90.0°</span></div>
+              <div class="joint-bar"><span class="lbl">KNE</span><div class="track"><div class="fill" id="bar-fr-kne" style="width: 38%;"></div></div><span class="deg" id="deg-fr-kne">68.4°</span></div>
+              <div class="joint-bar"><span class="lbl">ANK</span><div class="track"><div class="fill" id="bar-fr-ank" style="width: 58%;"></div></div><span class="deg" id="deg-fr-ank">105.1°</span></div>
+            </div>
+            <!-- Back Left -->
+            <div class="joint-leg-group">
+              <div class="leg-title"><span>BACK LEFT (BL)</span><span>39.8°C</span></div>
+              <div class="joint-bar"><span class="lbl">HIP</span><div class="track"><div class="fill" id="bar-bl-hip" style="width: 50%;"></div></div><span class="deg" id="deg-bl-hip">90.0°</span></div>
+              <div class="joint-bar"><span class="lbl">KNE</span><div class="track"><div class="fill" id="bar-bl-kne" style="width: 45%;"></div></div><span class="deg" id="deg-bl-kne">81.0°</span></div>
+              <div class="joint-bar"><span class="lbl">ANK</span><div class="track"><div class="fill" id="bar-bl-ank" style="width: 55%;"></div></div><span class="deg" id="deg-bl-ank">99.0°</span></div>
+            </div>
+            <!-- Back Right -->
+            <div class="joint-leg-group">
+              <div class="leg-title"><span>BACK RIGHT (BR)</span><span>41.5°C</span></div>
+              <div class="joint-bar"><span class="lbl">HIP</span><div class="track"><div class="fill" id="bar-br-hip" style="width: 50%;"></div></div><span class="deg" id="deg-br-hip">90.0°</span></div>
+              <div class="joint-bar"><span class="lbl">KNE</span><div class="track"><div class="fill" id="bar-br-kne" style="width: 59%;"></div></div><span class="deg" id="deg-br-kne">106.2°</span></div>
+              <div class="joint-bar"><span class="lbl">ANK</span><div class="track"><div class="fill" id="bar-br-ank" style="width: 42%;"></div></div><span class="deg" id="deg-br-ank">75.6°</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="flex: 1; border-bottom: none;">
+        <div class="card-header">
+          <div class="card-title">Telemetry Log Stream</div>
+          <span class="tel-val" style="font-size: 10px; color: var(--emerald);">STREAMING</span>
+        </div>
+        <div class="card-body" style="padding: 8px;">
+          <div class="term-box" id="term-box">
+            <div class="term-entry ok">[SYS_BOOT] S.O.L.A.R. Aerospace Telemetry Deck v3.4 Ready.</div>
+            <div class="term-entry">[COMMS] Handshake target: 192.168.1.91 (ESP32-CAM)</div>
+            <div class="term-entry ok">[TORQUE] PCA9685 PWM controller energized.</div>
+            <div class="term-entry">[IMU] MPU6050 DMP calibrated. Baseline horizon fixed.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>S.O.L.A.R. OPS // AEROSPACE FLIGHT CONTROL STATION</div>
+    <div>SESSION CLOCK: <span id="sys-clock">00:00:00</span> // PACKETS: <span id="pkt-count">5,124</span></div>
+  </footer>
+
+  <script>
+    let isSimMode = true;
+    let isConnected = false;
+    let estopLatched = false;
+    let liveFeed = false;
+    let flashOn = false;
+    let cadenceMs = 150;
+    let packetCount = 5124;
+    let seqRunning = false;
+
+    const alarmBanner = document.getElementById('alarm-banner');
+    const linkDot = document.getElementById('link-dot');
+    const torqueState = document.getElementById('torque-state');
+    const termBox = document.getElementById('term-box');
+    const targetIpInput = document.getElementById('target-ip');
+    const modeBadge = document.getElementById('mode-badge');
+
+    function logTerm(msg, type = '') {
+      const d = new Date().toTimeString().split(' ')[0];
+      const el = document.createElement('div');
+      el.className = 'term-entry ' + type;
+      el.textContent = `[${d}] ${msg}`;
+      termBox.appendChild(el);
+      termBox.scrollTop = termBox.scrollHeight;
+    }
+
+    function toggleSimMode() {
+      isSimMode = !isSimMode;
+      modeBadge.textContent = isSimMode ? 'SIM MODE' : 'HARDWARE LINK';
+      modeBadge.className = isSimMode ? 'mode-pill sim' : 'mode-pill live';
+      logTerm(`Operational mode switched to ${isSimMode ? 'Internal Simulation' : 'Direct Hardware'}`, isSimMode ? 'warn' : 'ok');
+    }
+
+    async function fetchRobot(path, params = {}) {
+      if(isSimMode) return { ok: true, json: async () => ({ status: 'sim_ok' }), text: async () => 'sim_ok' };
+      const ip = targetIpInput.value.trim();
+      const qs = new URLSearchParams(params).toString();
+      const url = `http://${ip}${path}${qs ? '?' + qs : ''}`;
+      return fetch(url, { signal: AbortSignal.timeout(2000) });
+    }
+
+    async function toggleLink() {
+      const ip = targetIpInput.value.trim();
+      logTerm(`Initiating handshake with ${ip}...`);
+      try {
+        const res = await fetchRobot('/ping');
+        if(res.ok) {
+          isConnected = true;
+          linkDot.style.background = 'var(--emerald)';
+          linkDot.classList.remove('alert');
+          document.getElementById('link-val').textContent = '18ms';
+          logTerm(`LINK ESTABLISHED WITH ${ip}`, 'ok');
+        }
+      } catch(e) {
+        logTerm(`COMMUNICATION TIMEOUT -> ${ip}`, 'err');
+      }
+    }
+
+    async function triggerEstop() {
+      estopLatched = true;
+      alarmBanner.classList.add('active');
+      linkDot.classList.add('alert');
+      torqueState.textContent = 'DISARMED';
+      torqueState.style.color = 'var(--crimson)';
+      logTerm('CRITICAL: EMERGENCY STOP TRANSMITTED. Torques disabled.', 'err');
+      try { await fetchRobot('/estop'); } catch(e) {}
+    }
+
+    async function clearEstop() {
+      estopLatched = false;
+      alarmBanner.classList.remove('active');
+      linkDot.classList.remove('alert');
+      torqueState.textContent = 'ARMED';
+      torqueState.style.color = 'var(--emerald)';
+      logTerm('E-STOP CLEARED. Actuator safety latch restored.', 'ok');
+      try { await fetchRobot('/estop/clear'); } catch(e) {}
+    }
+
+    async function setStance(btn, stance) {
+      if(estopLatched) { logTerm('Command rejected: E-Stop engaged', 'err'); return; }
+      document.querySelectorAll('.pose-btn-grid .btn-blueprint').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      logTerm(`POSE_DISPATCH: Switching stance to ${stance.toUpperCase()}`, 'ok');
+      try { await fetchRobot('/cmd', { mode: stance }); } catch(e) {}
+    }
+
+    function updateCadence(val) {
+      cadenceMs = parseInt(val);
+      document.getElementById('cadence-val').textContent = val + 'ms';
+      document.getElementById('step-ms').textContent = val + ' ms / cycle';
+      document.getElementById('cad-stat').textContent = val + 'ms';
+    }
+
+    async function toggleFlash() {
+      flashOn = !flashOn;
+      const btn = document.getElementById('btn-flash');
+      btn.textContent = `FLASH: ${flashOn ? 'ON' : 'OFF'}`;
+      btn.style.color = flashOn ? 'var(--amber)' : '';
+      logTerm(`Optical LED flash: ${flashOn ? 'ON' : 'OFF'}`);
+      try { await fetchRobot('/flash', { state: flashOn ? 1 : 0 }); } catch(e) {}
+    }
+
+    function toggleLiveFeed() {
+      liveFeed = !liveFeed;
+      const btn = document.getElementById('btn-feed');
+      const placeholder = document.getElementById('cam-placeholder');
+      const img = document.getElementById('cam-stream-img');
+      btn.textContent = `FEED: ${liveFeed ? 'LIVE' : 'PAUSED'}`;
+      btn.style.color = liveFeed ? 'var(--emerald)' : 'var(--amber)';
+      if(liveFeed) {
+        placeholder.style.display = 'none';
+        img.classList.add('active');
+        if(!isSimMode) img.src = `http://${targetIpInput.value.trim()}/capture?t=` + Date.now();
+      } else {
+        placeholder.style.display = 'flex';
+        img.classList.remove('active');
+      }
+    }
+
+    // Locomotion & WASD handling
+    const keyMap = { 'w': 'key-w', 'a': 'key-a', 's': 'key-s', 'd': 'key-d' };
+    let activeDir = null;
+
+    async function sendMoveCmd(dir) {
+      if(estopLatched) return;
+      let vx = 0, wz = 0;
+      if(dir === 'w') vx = 1;
+      if(dir === 's') vx = -1;
+      if(dir === 'a') wz = 1;
+      if(dir === 'd') wz = -1;
+      document.getElementById('vx-stat').textContent = vx.toFixed(1);
+      document.getElementById('wz-stat').textContent = wz.toFixed(1);
+      try {
+        await fetchRobot('/cmd', { mode: 'walk', vx, vy: 0, wz, speed: (150 / cadenceMs).toFixed(2) });
+      } catch(e) {}
+    }
+
+    async function stopMove() {
+      document.getElementById('vx-stat').textContent = '0.0';
+      document.getElementById('wz-stat').textContent = '0.0';
+      try { await fetchRobot('/cmd', { mode: 'stand' }); } catch(e) {}
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if(e.target.tagName === 'INPUT') return;
+      const k = e.key.toLowerCase();
+      if(keyMap[k] && activeDir !== k) {
+        activeDir = k;
+        const el = document.getElementById(keyMap[k]);
+        if(el) el.classList.add('active');
+        sendMoveCmd(k);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if(e.target.tagName === 'INPUT') return;
+      const k = e.key.toLowerCase();
+      if(keyMap[k]) {
+        const el = document.getElementById(keyMap[k]);
+        if(el) el.classList.remove('active');
+        if(activeDir === k) {
+          activeDir = null;
+          stopMove();
+        }
+      }
+    });
+
+    Object.entries(keyMap).forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('active'); sendMoveCmd(k); });
+      el.addEventListener('pointerup', (e) => { e.preventDefault(); el.classList.remove('active'); stopMove(); });
+    });
+
+    // Sequence execution engine
+    let seqSteps = [
+      { cmd: 'walk_fwd', dur: 1500, label: 'WALK_FWD' },
+      { cmd: 'turn_left', dur: 800, label: 'TURN_LEFT' },
+      { cmd: 'walk_fwd', dur: 2000, label: 'WALK_FWD' },
+      { cmd: 'stand', dur: 600, label: 'STAND' },
+      { cmd: 'dance', dur: 1200, label: 'DANCE' }
+    ];
+
+    async function runSequence() {
+      if(seqRunning) return;
+      seqRunning = true;
+      const btn = document.getElementById('btn-run-seq');
+      btn.textContent = 'RUNNING...';
+      btn.style.color = 'var(--emerald)';
+      logTerm('Initiating autonomous mission sequence...', 'ok');
+
+      for(let i = 0; i < seqSteps.length; i++) {
+        if(estopLatched) { logTerm('Sequence aborted by E-Stop.', 'err'); break; }
+        document.querySelectorAll('.seq-step').forEach(s => s.classList.remove('current'));
+        const currentEl = document.querySelector(`.seq-step[data-step="${i}"]`);
+        if(currentEl) currentEl.classList.add('current');
+
+        logTerm(`Sequence step ${i+1}/${seqSteps.length}: ${seqSteps[i].label} (${seqSteps[i].dur}ms)`);
+        try { await fetchRobot('/cmd', { mode: seqSteps[i].cmd }); } catch(e) {}
+        await new Promise(r => setTimeout(r, seqSteps[i].dur));
+      }
+
+      document.querySelectorAll('.seq-step').forEach(s => s.classList.remove('current'));
+      btn.textContent = 'RUN QUEUE';
+      btn.style.color = '';
+      seqRunning = false;
+      logTerm('Mission sequence completed successfully.', 'ok');
+      stopMove();
+    }
+
+    function clearSequence() {
+      seqSteps = [];
+      document.getElementById('timeline-strip').innerHTML = '<div style="color:var(--text-faint); font-family:var(--font-mono); font-size:11px;">[Queue Empty]</div>';
+      logTerm('Sequence timeline cleared.');
+    }
+
+    function addSequenceStep() {
+      const dur = 1000;
+      const idx = seqSteps.length;
+      seqSteps.push({ cmd: 'walk_fwd', dur, label: 'WALK_FWD' });
+      const strip = document.getElementById('timeline-strip');
+      const div = document.createElement('div');
+      div.className = 'seq-step';
+      div.setAttribute('data-step', idx);
+      div.innerHTML = `<span class="step-num">STEP ${idx < 9 ? '0' + (idx+1) : idx+1}</span><span class="cmd">WALK_FWD</span><span class="dur">${dur}ms</span>`;
+      strip.appendChild(div);
+      logTerm(`Appended step ${idx+1} to sequence.`);
+    }
+
+    // Dynamic simulation ticker
+    let simAngle = 0;
+    setInterval(() => {
+      packetCount += 4;
+      document.getElementById('pkt-count').textContent = packetCount.toLocaleString();
+      document.getElementById('sys-clock').textContent = new Date().toTimeString().split(' ')[0];
+
+      if(isSimMode && !estopLatched) {
+        simAngle += 0.08;
+        const roll = (Math.sin(simAngle * 0.7) * 3.5).toFixed(1);
+        const pitch = (Math.cos(simAngle * 0.5) * 2.2).toFixed(1);
+        const yaw = (180 + Math.sin(simAngle * 0.2) * 8).toFixed(1);
+
+        document.getElementById('roll-val').textContent = (roll >= 0 ? '+' : '') + roll + '°';
+        document.getElementById('pitch-val').textContent = (pitch >= 0 ? '+' : '') + pitch + '°';
+        document.getElementById('yaw-val').textContent = yaw + '°';
+
+        const horizonGroup = document.getElementById('horizon-group');
+        if(horizonGroup) {
+          horizonGroup.setAttribute('transform', `translate(100, ${60 + parseFloat(pitch)*2}) rotate(${-parseFloat(roll)})`);
+        }
+
+        if(activeDir || seqRunning) {
+          const phase = Math.sin(simAngle * 3) > 0;
+          document.getElementById('leg-fl').className = 'leg-badge ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('leg-fl').querySelector('.state').textContent = phase ? 'PLANTED' : 'SWING';
+          document.getElementById('leg-br').className = 'leg-badge ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('leg-br').querySelector('.state').textContent = phase ? 'PLANTED' : 'SWING';
+
+          document.getElementById('leg-fr').className = 'leg-badge ' + (!phase ? 'grounded' : 'swing');
+          document.getElementById('leg-fr').querySelector('.state').textContent = !phase ? 'PLANTED' : 'SWING';
+          document.getElementById('leg-bl').className = 'leg-badge ' + (!phase ? 'grounded' : 'swing');
+          document.getElementById('leg-bl').querySelector('.state').textContent = !phase ? 'PLANTED' : 'SWING';
+        }
+      }
+    }, 100);
+  </script>
+</body>
+</html>

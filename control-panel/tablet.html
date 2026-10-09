@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>S.O.L.A.R. Tactical Tablet // Aerospace Operator HUD</title>
+  <style>
+    :root {
+      --bg-field: #090d13;
+      --hud-panel: rgba(15, 21, 31, 0.92);
+      --hud-panel-solid: #0f151f;
+      --hud-bezel: #1e293b;
+      --hud-bezel-active: #38bdf8;
+      --cyan: #38bdf8;
+      --cyan-dim: rgba(56, 189, 248, 0.15);
+      --cyan-glow: rgba(56, 189, 248, 0.4);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.15);
+      --crimson: #ef4444;
+      --crimson-dim: rgba(239, 68, 68, 0.18);
+      --text-main: #f1f5f9;
+      --text-muted: #8493a8;
+      --text-faint: #475569;
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      background: var(--bg-field);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Top Tactical Heading Bar */
+    .tactical-header {
+      height: 50px;
+      background: var(--hud-panel-solid);
+      border-bottom: 1px solid var(--hud-bezel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .unit-callsign {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+    }
+    .unit-callsign .badge {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .nav-switch-desktop {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      color: var(--cyan);
+      font-size: 10px;
+      font-weight: 700;
+      background: var(--cyan-dim);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 4px 10px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .nav-switch-desktop:hover {
+      background: var(--cyan);
+      color: #000;
+    }
+
+    /* Compass Tape */
+    .compass-tape {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #05080d;
+      border: 1px solid var(--hud-bezel);
+      padding: 4px 16px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--cyan);
+      font-weight: 700;
+    }
+    .compass-marker {
+      color: #fff;
+      border-bottom: 2px solid var(--cyan);
+      padding-bottom: 2px;
+    }
+
+    .status-capsules {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .capsule {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--hud-bezel);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .capsule .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 6px var(--emerald);
+    }
+    .capsule .dot.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .capsule .dot.err { background: var(--crimson); box-shadow: 0 0 6px var(--crimson); }
+
+    /* Target Connection Strip */
+    .target-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .target-input {
+      background: #05080d;
+      border: 1px solid var(--hud-bezel);
+      color: var(--cyan);
+      padding: 3px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 3px;
+      width: 110px;
+      outline: none;
+    }
+    .btn-connect {
+      background: var(--hud-bezel);
+      color: var(--text-main);
+      border: 1px solid var(--hud-bezel);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    /* Main Full-Bleed HUD Stage */
+    .hud-stage {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #0b1420 0%, #03060a 85%);
+    }
+
+    .stream-feed {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.85;
+      display: none;
+    }
+    .stream-feed.active { display: block; }
+
+    /* Technical Crosshair Overlay */
+    .hud-reticle-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .corner-bracket {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--cyan);
+      opacity: 0.6;
+    }
+    .bracket-tl { top: 20px; left: 20px; border-right: none; border-bottom: none; }
+    .bracket-tr { top: 20px; right: 20px; border-left: none; border-bottom: none; }
+    .bracket-bl { bottom: 20px; left: 20px; border-right: none; border-top: none; }
+    .bracket-br { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+
+    .attitude-crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Top Floating Data HUD */
+    .floating-telemetry {
+      position: absolute;
+      top: 14px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .telemetry-card {
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      padding: 6px 12px;
+      border-radius: 4px;
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .telemetry-card .item {
+      display: flex;
+      flex-direction: column;
+    }
+    .telemetry-card .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+    .telemetry-card .val { font-weight: 700; color: var(--cyan); }
+
+    /* Gait Stance Phase Matrix */
+    .gait-matrix-pill {
+      display: flex;
+      gap: 6px;
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .leg-pill {
+      padding: 3px 6px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--hud-bezel);
+      font-weight: 700;
+    }
+    .leg-pill.grounded {
+      border-color: var(--emerald);
+      color: var(--emerald);
+      background: var(--emerald-dim);
+    }
+    .leg-pill.swing {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: var(--amber-dim);
+    }
+
+    /* Thumb Control Clusters (Tablet Optimized) */
+    .thumb-cluster-left {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .joystick-pad {
+      width: 160px;
+      height: 160px;
+      background: radial-gradient(circle, rgba(15,21,31,0.95) 0%, rgba(9,13,19,0.98) 100%);
+      border: 2px solid var(--hud-bezel);
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+    .joystick-pad:active {
+      border-color: var(--cyan);
+    }
+
+    .joystick-knob {
+      width: 58px;
+      height: 58px;
+      background: var(--hud-bezel);
+      border: 2px solid var(--cyan);
+      border-radius: 50%;
+      position: absolute;
+      box-shadow: 0 0 14px var(--cyan-glow);
+      pointer-events: none;
+      transition: transform 0.05s ease-out;
+    }
+
+    .joystick-axis-h {
+      position: absolute;
+      width: 100%;
+      height: 1px;
+      background: rgba(56, 189, 248, 0.15);
+    }
+    .joystick-axis-v {
+      position: absolute;
+      height: 100%;
+      width: 1px;
+      background: rgba(56, 189, 248, 0.15);
+    }
+
+    .thumb-cluster-right {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      z-index: 30;
+      display: grid;
+      grid-template-columns: repeat(2, 72px);
+      grid-template-rows: repeat(2, 72px);
+      gap: 10px;
+    }
+
+    .macro-btn {
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      color: var(--text-main);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      transition: all 0.1s ease;
+    }
+    .macro-btn:active {
+      transform: scale(0.95);
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+      color: var(--cyan);
+    }
+    .macro-btn.active {
+      border-color: var(--cyan);
+      background: var(--cyan);
+      color: #000;
+    }
+    .macro-btn .sub { font-size: 8px; color: var(--text-muted); }
+
+    /* Center Safety Guard Bar */
+    .safety-center-dock {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      padding: 8px 16px;
+      border-radius: 6px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+
+    .slap-estop {
+      background: var(--crimson);
+      color: #fff;
+      border: 2px solid #b91c1c;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+      transition: transform 0.08s;
+    }
+    .slap-estop:active { transform: scale(0.96); }
+
+    .btn-reset-guard {
+      background: transparent;
+      border: 1px solid var(--hud-bezel);
+      color: var(--text-muted);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-reset-guard:active { color: #fff; border-color: var(--text-main); }
+
+    .cadence-dial {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 9px;
+      color: var(--text-muted);
+      width: 100px;
+    }
+    .cadence-dial input {
+      accent-color: var(--cyan);
+    }
+
+    /* E-Stop Fullscreen Alert Screen */
+    .estop-fullscreen-alert {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(239, 68, 68, 0.25);
+      border: 6px solid var(--crimson);
+      z-index: 1000;
+      pointer-events: none;
+      align-items: center;
+      justify-content: center;
+      animation: flashBorder 0.8s infinite;
+    }
+    .estop-fullscreen-alert.active { display: flex; }
+
+    @keyframes flashBorder {
+      0%, 100% { border-color: var(--crimson); }
+      50% { border-color: transparent; }
+    }
+
+    .alert-box {
+      background: #090d13;
+      border: 2px solid var(--crimson);
+      padding: 18px 28px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .alert-box h2 { color: var(--crimson); font-size: 18px; margin-bottom: 6px; }
+    .alert-box p { color: var(--text-main); font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <div id="estop-alert" class="estop-fullscreen-alert">
+    <div class="alert-box">
+      <h2>⚠️ EMERGENCY STOP ENGAGED</h2>
+      <p>All 12-DOF servo outputs disabled. Motion generator halted.</p>
+    </div>
+  </div>
+
+  <header class="tactical-header">
+    <div class="unit-callsign">
+      <span class="badge">SOLAR-01</span>
+      <span>TACTICAL TABLET HUD</span>
+      <a href="./index.html" class="nav-switch-desktop">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>DESKTOP DECK</span>
+      </a>
+    </div>
+
+    <div class="compass-tape">
+      <span>160°</span>
+      <span>170°</span>
+      <span class="compass-marker">[180° S]</span>
+      <span>190°</span>
+      <span>200°</span>
+    </div>
+
+    <div class="status-capsules">
+      <div class="target-bar">
+        <input type="text" id="target-ip" class="target-input" value="192.168.1.91" />
+        <button class="btn-connect" onclick="connectRobot()">LINK</button>
+      </div>
+      <div class="capsule">
+        <span class="dot" id="link-dot"></span>
+        <span id="link-status">ONLINE</span>
+      </div>
+      <div class="capsule">
+        <span style="color:var(--emerald); font-weight:700;" id="bat-pill">8.2V</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hud-stage">
+    <img id="cam-feed" class="stream-feed" alt="Camera Feed" />
+
+    <!-- Reticle Layer -->
+    <div class="hud-reticle-layer">
+      <div class="corner-bracket bracket-tl"></div>
+      <div class="corner-bracket bracket-tr"></div>
+      <div class="corner-bracket bracket-bl"></div>
+      <div class="corner-bracket bracket-br"></div>
+
+      <svg class="attitude-crosshair" viewBox="0 0 220 140">
+        <g id="hud-pitch-ladder" transform="translate(110, 70) rotate(0)">
+          <line x1="-60" y1="0" x2="60" y2="0" stroke="#38bdf8" stroke-width="1.5" opacity="0.8" />
+          <line x1="-30" y1="-20" x2="30" y2="-20" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" />
+          <line x1="-30" y1="20" x2="30" y2="20" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" />
+        </g>
+        <circle cx="110" cy="70" r="4" fill="none" stroke="#f59e0b" stroke-width="1.5" />
+        <path d="M 85 70 L 100 70 M 120 70 L 135 70" stroke="#f59e0b" stroke-width="1.5" />
+      </svg>
+    </div>
+
+    <!-- Top Floating Readouts -->
+    <div class="floating-telemetry">
+      <div class="telemetry-card">
+        <div class="item"><span class="lbl">PITCH</span><span class="val" id="pitch-stat">+0.8°</span></div>
+        <div class="item"><span class="lbl">ROLL</span><span class="val" id="roll-stat">-0.2°</span></div>
+        <div class="item"><span class="lbl">VEL</span><span class="val" id="vel-stat">0.0 m/s</span></div>
+      </div>
+
+      <div class="gait-matrix-pill">
+        <div class="leg-pill grounded" id="pill-fl">FL</div>
+        <div class="leg-pill swing" id="pill-fr">FR</div>
+        <div class="leg-pill swing" id="pill-bl">BL</div>
+        <div class="leg-pill grounded" id="pill-br">BR</div>
+      </div>
+    </div>
+
+    <!-- Left Thumb: Analog Vector Joystick -->
+    <div class="thumb-cluster-left">
+      <div class="joystick-pad" id="joystick-pad">
+        <div class="joystick-axis-h"></div>
+        <div class="joystick-axis-v"></div>
+        <div class="joystick-knob" id="joystick-knob"></div>
+      </div>
+      <span style="font-size: 10px; color: var(--text-muted);">DRIVE VECTOR</span>
+    </div>
+
+    <!-- Right Thumb: Action Bank -->
+    <div class="thumb-cluster-right">
+      <button class="macro-btn active" onclick="setPose(this, 'stand')"><span>STAND</span><span class="sub">READY</span></button>
+      <button class="macro-btn" onclick="setPose(this, 'turtle')"><span>TURTLE</span><span class="sub">GUARD</span></button>
+      <button class="macro-btn" onclick="setPose(this, 'sit')"><span>SIT</span><span class="sub">REST</span></button>
+      <button class="macro-btn" onclick="setPose(this, 'flip')"><span>RECOVER</span><span class="sub">FLIP</span></button>
+    </div>
+
+    <!-- Center Guard Dock -->
+    <div class="safety-center-dock">
+      <button class="slap-estop" onclick="triggerEstop()">E-STOP</button>
+      <button class="btn-reset-guard" onclick="clearEstop()">RESET</button>
+
+      <div class="cadence-dial">
+        <div style="display:flex; justify-content:space-between;">
+          <span>CADENCE</span>
+          <span id="cad-val" style="color:var(--cyan); font-weight:700;">150ms</span>
+        </div>
+        <input type="range" min="40" max="300" value="150" oninput="updateCadence(this.value)" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let estopLatched = false;
+    let cadence = 150;
+    let isSim = false;
+    const targetInput = document.getElementById('target-ip');
+    const estopScreen = document.getElementById('estop-alert');
+    const linkDot = document.getElementById('link-dot');
+    const linkStatus = document.getElementById('link-status');
+
+    async function fetchRobot(path, params = {}) {
+      const ip = targetInput.value.trim();
+      if (!ip) return;
+      const qs = new URLSearchParams(params).toString();
+      const url = `http://${ip}${path}${qs ? '?' + qs : ''}`;
+      try {
+        return await fetch(url, { signal: AbortSignal.timeout(1800) });
+      } catch(e) {
+        return null;
+      }
+    }
+
+    async function connectRobot() {
+      const res = await fetchRobot('/ping');
+      if(res && res.ok) {
+        linkDot.className = 'dot';
+        linkStatus.textContent = 'ONLINE';
+      } else {
+        linkDot.className = 'dot err';
+        linkStatus.textContent = 'OFFLINE';
+      }
+    }
+
+    async function triggerEstop() {
+      estopLatched = true;
+      estopScreen.classList.add('active');
+      linkDot.className = 'dot err';
+      linkStatus.textContent = 'ESTOP';
+      await fetchRobot('/estop');
+    }
+
+    async function clearEstop() {
+      estopLatched = false;
+      estopScreen.classList.remove('active');
+      linkDot.className = 'dot';
+      linkStatus.textContent = 'ONLINE';
+      await fetchRobot('/estop/clear');
+    }
+
+    function updateCadence(val) {
+      cadence = parseInt(val);
+      document.getElementById('cad-val').textContent = val + 'ms';
+    }
+
+    async function setPose(btn, pose) {
+      if(estopLatched) return;
+      document.querySelectorAll('.macro-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      await fetchRobot('/cmd', { mode: pose });
+    }
+
+    // Analog Joystick Pointer Events
+    const pad = document.getElementById('joystick-pad');
+    const knob = document.getElementById('joystick-knob');
+    let padRect = pad.getBoundingClientRect();
+    const maxRadius = 45;
+    let dragging = false;
+
+    window.addEventListener('resize', () => {
+      padRect = pad.getBoundingClientRect();
+    });
+
+    pad.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      padRect = pad.getBoundingClientRect();
+      pad.setPointerCapture(e.pointerId);
+      moveJoystick(e);
+    });
+
+    pad.addEventListener('pointermove', (e) => {
+      if(!dragging) return;
+      moveJoystick(e);
+    });
+
+    function endJoystick() {
+      if(!dragging) return;
+      dragging = false;
+      knob.style.transform = 'translate(0px, 0px)';
+      document.getElementById('vel-stat').textContent = '0.0 m/s';
+      fetchRobot('/cmd', { mode: 'stand' });
+    }
+
+    pad.addEventListener('pointerup', endJoystick);
+    pad.addEventListener('pointercancel', endJoystick);
+
+    let lastSend = 0;
+    function moveJoystick(e) {
+      const centerX = padRect.left + padRect.width / 2;
+      const centerY = padRect.top + padRect.height / 2;
+      let dx = e.clientX - centerX;
+      let dy = e.clientY - centerY;
+      const dist = Math.hypot(dx, dy);
+
+      if(dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+      const vx = (-dy / maxRadius);
+      const wz = (-dx / maxRadius);
+
+      const speed = Math.abs(vx) * 0.8;
+      document.getElementById('vel-stat').textContent = speed.toFixed(2) + ' m/s';
+
+      const now = Date.now();
+      if(now - lastSend > 120 && !estopLatched) {
+        lastSend = now;
+        fetchRobot('/cmd', { mode: 'walk', vx: vx.toFixed(2), vy: 0, wz: wz.toFixed(2), speed: (150 / cadence).toFixed(2) });
+      }
+    }
+
+    // Dynamic simulation ticker
+    let simAngle = 0;
+    setInterval(() => {
+      if(!estopLatched) {
+        simAngle += 0.08;
+        const roll = (Math.sin(simAngle * 0.7) * 2.8).toFixed(1);
+        const pitch = (Math.cos(simAngle * 0.5) * 1.8).toFixed(1);
+        document.getElementById('pitch-stat').textContent = (pitch >= 0 ? '+' : '') + pitch + '°';
+        document.getElementById('roll-stat').textContent = (roll >= 0 ? '+' : '') + roll + '°';
+
+        if(dragging) {
+          const phase = Math.sin(simAngle * 3) > 0;
+          document.getElementById('pill-fl').className = 'leg-pill ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('pill-br').className = 'leg-pill ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('pill-fr').className = 'leg-pill ' + (!phase ? 'grounded' : 'swing');
+          document.getElementById('pill-bl').className = 'leg-pill ' + (!phase ? 'grounded' : 'swing');
+        }
+      }
+    }, 100);
+  </script>
+</body>
+</html>

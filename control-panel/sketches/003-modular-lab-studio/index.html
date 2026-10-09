@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S.O.L.A.R. Studio // Modular Research Workbench</title>
+  <style>
+    :root {
+      --bg: #0b0d14;
+      --panel: #131722;
+      --card: #181d2a;
+      --border: #23283b;
+      --border-light: #2e354d;
+      --violet: #8b5cf6;
+      --violet-dim: rgba(139, 92, 246, 0.15);
+      --cyan: #06b6d4;
+      --cyan-dim: rgba(6, 182, 212, 0.15);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --crimson: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      height: 52px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      background: var(--violet-dim);
+      color: var(--violet);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .tab {
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: var(--card);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--emerald);
+    }
+    .btn-estop {
+      background: var(--crimson);
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+    .col {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .card {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    .card-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .card-body {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .joint-group {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .joint-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--violet);
+      display: flex;
+      justify-content: space-between;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    .slider-row label { width: 34px; color: var(--text-dim); }
+    .slider-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--violet);
+    }
+    .slider-row span { width: 36px; text-align: right; color: var(--text); }
+    .viewport {
+      height: 340px;
+      background: #07080d;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .chart-container {
+      flex: 1;
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      min-height: 180px;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .btn-studio {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-studio:hover { border-color: var(--violet); }
+    .btn-studio.active { background: var(--violet); color: #fff; border-color: var(--violet); }
+    .log-box {
+      background: #07080d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      height: 120px;
+      overflow-y: auto;
+      padding: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    footer {
+      height: 28px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="badge">STUDIO</span>
+      <div class="title">S.O.L.A.R. Research & Kinematics Studio</div>
+    </div>
+    <div class="tabs">
+      <div class="tab active">Workbench</div>
+      <div class="tab">Kinematics & PID</div>
+      <div class="tab">Gait Sequencer</div>
+      <div class="tab">Optical Pipeline</div>
+    </div>
+    <div class="actions">
+      <div class="pill">● ESP32-CAM (8.2V / 88%)</div>
+      <button class="btn-estop" id="btn-estop">E-STOP</button>
+    </div>
+  </header>
+  <main>
+    <section class="col">
+      <div class="card">
+        <div class="card-head">
+          <span>Front Kinematics Tuning</span>
+          <span style="color: var(--violet);">FL / FR</span>
+        </div>
+        <div class="card-body">
+          <div class="joint-group">
+            <div class="joint-title"><span>FRONT LEFT (FL)</span><span id="fl-temp">41.2°C</span></div>
+            <div class="slider-row"><label>COXA</label><input type="range" min="0" max="180" value="90" oninput="updateJoint('fl-cox', this.value)" /><span id="fl-cox">90°</span></div>
+            <div class="slider-row"><label>FEMUR</label><input type="range" min="0" max="180" value="112" oninput="updateJoint('fl-fem', this.value)" /><span id="fl-fem">112°</span></div>
+            <div class="slider-row"><label>TIBIA</label><input type="range" min="0" max="180" value="74" oninput="updateJoint('fl-tib', this.value)" /><span id="fl-tib">74°</span></div>
+          </div>
+          <div class="joint-group">
+            <div class="joint-title"><span>FRONT RIGHT (FR)</span><span id="fr-temp">40.8°C</span></div>
+            <div class="slider-row"><label>COXA</label><input type="range" min="0" max="180" value="90" oninput="updateJoint('fr-cox', this.value)" /><span id="fr-cox">90°</span></div>
+            <div class="slider-row"><label>FEMUR</label><input type="range" min="0" max="180" value="68" oninput="updateJoint('fr-fem', this.value)" /><span id="fr-fem">68°</span></div>
+            <div class="slider-row"><label>TIBIA</label><input type="range" min="0" max="180" value="105" oninput="updateJoint('fr-tib', this.value)" /><span id="fr-tib">105°</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="flex: 1; border-bottom: none;">
+        <div class="card-head"><span>Kinematic Constraints</span></div>
+        <div class="card-body">
+          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+            Dynamic joint soft-limits enforced via inverse kinematics solver. Max angular velocity clamped to 180°/s.
+          </div>
+          <div class="btn-grid" style="grid-template-columns: 1fr 1fr;">
+            <button class="btn-studio" onclick="calibrateZero()">CALIBRATE ZERO</button>
+            <button class="btn-studio" onclick="relaxTorque()">RELAX TORQUE</button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="col">
+      <div class="viewport">
+        <svg style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;" viewBox="0 0 600 340">
+          <circle cx="300" cy="170" r="40" stroke="rgba(139, 92, 246, 0.4)" stroke-width="1.5" fill="none" stroke-dasharray="4 4" />
+          <line x1="250" y1="170" x2="280" y2="170" stroke="#8b5cf6" stroke-width="1.5" />
+          <line x1="320" y1="170" x2="350" y2="170" stroke="#8b5cf6" stroke-width="1.5" />
+          <line x1="300" y1="120" x2="300" y2="150" stroke="#8b5cf6" stroke-width="1.5" />
+          <line x1="300" y1="190" x2="300" y2="220" stroke="#8b5cf6" stroke-width="1.5" />
+        </svg>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; font-family: var(--font-mono);">
+          <span>[ ESP32-CAM RECONNAISSANCE STREAM ]</span>
+          <span style="font-size: 10px; color: var(--violet);">160x120 OV2640 // 25 FPS // RGB565</span>
+        </div>
+      </div>
+      <div class="chart-container">
+        <div class="card-head">
+          <span>Real-time IMU Oscilloscope & Phase Telemetry</span>
+          <span style="color: var(--cyan); font-family: var(--font-mono); font-size: 10px;">50 Hz STREAM</span>
+        </div>
+        <div style="flex: 1; position: relative; padding: 10px;">
+          <canvas id="scope-canvas"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="col">
+      <div class="card">
+        <div class="card-head"><span>Locomotion & Gait Presets</span></div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn-studio active" onclick="setGait(this, 'STAND')">STAND</button>
+            <button class="btn-studio" onclick="setGait(this, 'TROT')">TROT</button>
+            <button class="btn-studio" onclick="setGait(this, 'CRAWL')">CRAWL</button>
+            <button class="btn-studio" onclick="setGait(this, 'SIT')">SIT</button>
+            <button class="btn-studio" onclick="setGait(this, 'TURTLE')">TURTLE</button>
+            <button class="btn-studio" onclick="setGait(this, 'DANCE')">DANCE</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);">
+              <span>Step Height</span><span id="h-val">32mm</span>
+            </div>
+            <input type="range" min="10" max="60" value="32" oninput="document.getElementById('h-val').textContent = this.value + 'mm'" />
+          </div>
+        </div>
+      </div>
+      <div class="card" style="flex: 1; border-bottom: none;">
+        <div class="card-head"><span>Diagnostic Event Stream</span></div>
+        <div class="card-body">
+          <div class="log-box" id="log-box">
+            <div>[INIT] Workspace loaded: Modular Lab Studio</div>
+            <div>[I2C] PCA9685 16-channel servo controller ready (0x40)</div>
+            <div>[IMU] MPU6050 6-DOF fused DMP stream initialized</div>
+            <div>[NETWORK] WebSockets connected @ 192.168.1.91:81</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <div>S.O.L.A.R. STUDIO // REVISION 3.2 LAB BENCH</div>
+    <div>BUFFER: 1024 FRAMES // LATENCY: 21ms // STATUS: NOMINAL</div>
+  </footer>
+  <script>
+    function updateJoint(id, val) {
+      document.getElementById(id).textContent = val + '°';
+    }
+    function setGait(btn, gait) {
+      document.querySelectorAll('.btn-grid .btn-studio').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      log(`Gait mode switched to: ${gait}`);
+    }
+    function log(msg) {
+      const box = document.getElementById('log-box');
+      const div = document.createElement('div');
+      div.textContent = `[${new Date().toTimeString().split(' ')[0]}] ${msg}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+    const canvas = document.getElementById('scope-canvas');
+    const ctx = canvas.getContext('2d');
+    let t = 0;
+    function resize() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resize);
+    setTimeout(resize, 100);
+    function draw() {
+      if (!canvas.width) return requestAnimationFrame(draw);
+      ctx.fillStyle = '#10131c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#1e2436';
+      ctx.lineWidth = 1;
+      for (let y = 0; y < canvas.height; y += 30) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+      ctx.strokeStyle = '#8b5cf6';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = 0; x < canvas.width; x += 4) {
+        const y = canvas.height / 2 + Math.sin((x + t) * 0.03) * 24 + Math.sin((x + t * 0.5) * 0.08) * 8;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#06b6d4';
+      ctx.beginPath();
+      for (let x = 0; x < canvas.width; x += 4) {
+        const y = canvas.height / 2 + Math.cos((x + t * 1.2) * 0.025) * 18;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      t += 2;
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>

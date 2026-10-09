@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>S.O.L.A.R. Tactical Tablet // Aerospace Operator HUD</title>
+  <style>
+    :root {
+      --bg-field: #090d13;
+      --hud-panel: rgba(15, 21, 31, 0.90);
+      --hud-panel-solid: #0f151f;
+      --hud-bezel: #1e293b;
+      --hud-bezel-active: #38bdf8;
+      --cyan: #38bdf8;
+      --cyan-dim: rgba(56, 189, 248, 0.15);
+      --cyan-glow: rgba(56, 189, 248, 0.4);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245, 158, 11, 0.15);
+      --crimson: #ef4444;
+      --crimson-dim: rgba(239, 68, 68, 0.18);
+      --text-main: #f1f5f9;
+      --text-muted: #8493a8;
+      --text-faint: #475569;
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      background: var(--bg-field);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Top Tactical Heading Bar */
+    .tactical-header {
+      height: 50px;
+      background: var(--hud-panel-solid);
+      border-bottom: 1px solid var(--hud-bezel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .unit-callsign {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+    }
+    .unit-callsign .badge {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    /* Compass Tape */
+    .compass-tape {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #05080d;
+      border: 1px solid var(--hud-bezel);
+      padding: 4px 16px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--cyan);
+      font-weight: 700;
+    }
+    .compass-marker {
+      color: #fff;
+      border-bottom: 2px solid var(--cyan);
+      padding-bottom: 2px;
+    }
+
+    .sys-vitals {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 11px;
+    }
+    .vital-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vital-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .vital-dot.alert {
+      background: var(--crimson);
+      box-shadow: 0 0 8px var(--crimson);
+      animation: pulse 0.8s infinite;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* Main Immersive Stage */
+    .hud-arena {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at center, #0e1622 0%, #03060a 90%);
+      overflow: hidden;
+    }
+
+    .camera-viewport {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cam-stream-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .cam-stream-img.active { display: block; }
+
+    .reticle-tactical-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .feed-silhouette {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-faint);
+    }
+
+    /* Top Center Telemetry HUD */
+    .hud-attitude-center {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      border-radius: 6px;
+      padding: 6px 18px;
+      display: flex;
+      gap: 20px;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+    .hud-stat { display: flex; flex-direction: column; align-items: center; }
+    .hud-stat .val { font-size: 13px; font-weight: 700; color: var(--cyan); }
+    .hud-stat .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+
+    /* Dual Landscape Thumb Controls (Left: Vector Touch Stick) */
+    .thumb-cluster-left {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      z-index: 20;
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      border-radius: 16px;
+      padding: 14px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .cluster-title {
+      font-size: 10px;
+      color: var(--cyan);
+      letter-spacing: 0.1em;
+      font-weight: 800;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cluster-title::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: var(--cyan);
+    }
+
+    .joystick-pad {
+      width: 150px;
+      height: 150px;
+      background: #05080d;
+      border: 2px solid var(--hud-bezel);
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 4px 14px rgba(0,0,0,0.8);
+      touch-action: none;
+    }
+
+    .joystick-pad::after {
+      content: "";
+      position: absolute;
+      width: 75px;
+      height: 75px;
+      border: 1px dashed rgba(56, 189, 248, 0.2);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .joy-stick-knob {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #1b2638, #0e1622);
+      border: 2px solid var(--cyan);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: var(--cyan);
+      box-shadow: 0 4px 16px var(--cyan-glow);
+      pointer-events: none;
+      transition: transform 0.05s ease;
+    }
+
+    .dpad-markers {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .dpad-markers span {
+      position: absolute;
+      font-size: 10px;
+      color: var(--text-faint);
+      font-weight: 700;
+    }
+    .m-fwd { top: 6px; left: 50%; transform: translateX(-50%); }
+    .m-rev { bottom: 6px; left: 50%; transform: translateX(-50%); }
+    .m-lft { left: 6px; top: 50%; transform: translateY(-50%); }
+    .m-rgt { right: 6px; top: 50%; transform: translateY(-50%); }
+
+    .cadence-control {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cadence-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .cadence-slider {
+      width: 100%;
+      accent-color: var(--cyan);
+      height: 6px;
+    }
+
+    /* Right Thumb Cluster: Touch Macros & Guarded E-Stop */
+    .thumb-cluster-right {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 20;
+      background: var(--hud-panel);
+      border: 1px solid var(--hud-bezel);
+      border-radius: 16px;
+      padding: 14px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 250px;
+    }
+
+    .macro-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-tactical {
+      background: #111824;
+      border: 1px solid var(--hud-bezel);
+      color: var(--text-main);
+      padding: 12px 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-tactical:active {
+      background: var(--cyan-dim);
+      border-color: var(--cyan);
+      transform: scale(0.96);
+    }
+    .btn-tactical span.sub { font-size: 8px; color: var(--text-muted); }
+
+    .slap-estop {
+      height: 48px;
+      background: repeating-linear-gradient(
+        45deg,
+        #dc2626,
+        #dc2626 12px,
+        #991b1b 12px,
+        #991b1b 24px
+      );
+      border: 2px solid var(--crimson);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      font-weight: 900;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+      transition: transform 0.08s;
+    }
+    .slap-estop:active { transform: scale(0.97); }
+
+    /* Bottom Tactical Status & Drawer */
+    .bottom-ticker {
+      height: 38px;
+      background: var(--hud-panel-solid);
+      border-top: 1px solid var(--hud-bezel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 10px;
+      color: var(--text-muted);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .contact-drawer-mini {
+      display: flex;
+      gap: 8px;
+    }
+    .leg-pill {
+      background: #090d13;
+      border: 1px solid var(--hud-bezel);
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .leg-pill.grounded { border-color: rgba(16, 185, 129, 0.4); color: var(--emerald); }
+    .leg-pill.swing { border-color: rgba(245, 158, 11, 0.4); color: var(--amber); }
+
+    .alarm-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      box-shadow: inset 0 0 60px rgba(239, 68, 68, 0.6);
+      display: none;
+      z-index: 90;
+      animation: blink 0.8s infinite;
+    }
+    .alarm-flash.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <div id="alarm-flash" class="alarm-flash"></div>
+
+  <header class="tactical-header">
+    <div class="unit-callsign">
+      <span class="badge">SOLAR-TAB</span>
+      <span>S.O.L.A.R. TACTICAL HUD // 192.168.1.91</span>
+    </div>
+
+    <div class="compass-tape">
+      <span>240°</span>
+      <span>255°</span>
+      <span class="compass-marker" id="compass-val">[ 270° W ]</span>
+      <span>285°</span>
+      <span>300°</span>
+    </div>
+
+    <div class="sys-vitals">
+      <div class="vital-pill">
+        <span class="vital-dot" id="status-dot"></span>
+        <span id="rtt-val">22ms</span>
+      </div>
+      <div class="vital-pill">
+        <span style="color:var(--text-muted);">BAT:</span>
+        <span style="color:var(--emerald); font-weight:700;">8.24V [89%]</span>
+      </div>
+      <div class="vital-pill">
+        <span style="color:var(--text-muted);">TORQUE:</span>
+        <span id="torque-lbl" style="color:var(--emerald); font-weight:700;">ARMED</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="hud-arena">
+    <!-- Center Top IMU Telemetry -->
+    <div class="hud-attitude-center">
+      <div class="hud-stat"><span class="val" id="vel-stat">0.0 m/s</span><span class="lbl">Linear Rate</span></div>
+      <div class="hud-stat"><span class="val" id="pitch-stat">+1.2°</span><span class="lbl">Pitch Ladder</span></div>
+      <div class="hud-stat"><span class="val" id="roll-stat">-0.4°</span><span class="lbl">Roll Angle</span></div>
+      <div class="hud-stat"><span class="val" style="color:var(--emerald);" id="gait-stat">TROT</span><span class="lbl">Gait Cyclic</span></div>
+    </div>
+
+    <!-- Camera Viewport with Aerospace Reticle -->
+    <div class="camera-viewport">
+      <img id="cam-stream-img" class="cam-stream-img" alt="Camera stream" />
+
+      <svg class="reticle-tactical-svg" viewBox="0 0 600 400">
+        <!-- Aerospace Cyan Flight Brackets -->
+        <path d="M 40 60 L 40 40 L 60 40" stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.7" />
+        <path d="M 560 60 L 560 40 L 540 40" stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.7" />
+        <path d="M 40 340 L 40 360 L 60 360" stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.7" />
+        <path d="M 560 340 L 560 360 L 540 360" stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.7" />
+
+        <!-- Center Targeting Circle -->
+        <circle cx="300" cy="200" r="36" stroke="#38bdf8" stroke-width="1.5" fill="none" stroke-dasharray="6 4" opacity="0.5" />
+        <circle cx="300" cy="200" r="3" fill="#38bdf8" />
+        <line x1="240" y1="200" x2="275" y2="200" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" />
+        <line x1="325" y1="200" x2="360" y2="200" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" />
+        <line x1="300" y1="140" x2="300" y2="175" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" />
+        <line x1="300" y1="225" x2="300" y2="260" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" />
+      </svg>
+
+      <div class="feed-silhouette" id="cam-placeholder">
+        <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <circle cx="12" cy="10" r="3" />
+          <line x1="6" y1="21" x2="18" y2="21" />
+        </svg>
+        <span style="color: var(--cyan); letter-spacing: 0.1em; font-weight: 700; font-size: 11px;">[ ESP32-CAM OPTICAL RECON // OV2640 ]</span>
+      </div>
+    </div>
+
+    <!-- Left Thumb: Multi-Touch Analog Joystick -->
+    <div class="thumb-cluster-left">
+      <div class="cluster-title">VECTOR DRIVE</div>
+      <div class="joystick-pad" id="joy-pad">
+        <div class="dpad-markers">
+          <span class="m-fwd">FWD</span>
+          <span class="m-rev">REV</span>
+          <span class="m-lft">LT</span>
+          <span class="m-rgt">RT</span>
+        </div>
+        <div class="joy-stick-knob" id="joy-knob">
+          ●
+        </div>
+      </div>
+      <div class="cadence-control">
+        <div class="cadence-labels">
+          <span>CADENCE</span>
+          <span id="cad-display" style="color:var(--cyan); font-weight:700;">150ms</span>
+        </div>
+        <input type="range" min="40" max="300" value="150" class="cadence-slider" oninput="updateCadence(this.value)" />
+      </div>
+    </div>
+
+    <!-- Right Thumb: Action Macros & Guarded Slap E-Stop -->
+    <div class="thumb-cluster-right">
+      <div class="cluster-title">TACTICAL MACROS</div>
+      <div class="macro-grid">
+        <button class="btn-tactical" onclick="sendMacro('stand')">STAND<span class="sub">READY</span></button>
+        <button class="btn-tactical" onclick="sendMacro('turtle')">TURTLE<span class="sub">SHIELD</span></button>
+        <button class="btn-tactical" onclick="sendMacro('sit')">SIT<span class="sub">REST</span></button>
+        <button class="btn-tactical" onclick="sendMacro('flip')">RECOVER<span class="sub">FLIP</span></button>
+        <button class="btn-tactical" onclick="sendMacro('dance')">DANCE<span class="sub">ROUTINE</span></button>
+        <button class="btn-tactical" onclick="toggleFlash()" id="btn-flash">FLASH<span class="sub">LED TORCH</span></button>
+      </div>
+      <button class="slap-estop" onclick="handleEstop()">E-STOP HALT</button>
+    </div>
+  </main>
+
+  <footer class="bottom-ticker">
+    <div class="contact-drawer-mini">
+      <span class="leg-pill grounded" id="pill-fl">FL: GRND</span>
+      <span class="leg-pill swing" id="pill-fr">FR: SWNG</span>
+      <span class="leg-pill swing" id="pill-bl">BL: SWNG</span>
+      <span class="leg-pill grounded" id="pill-br">BR: GRND</span>
+    </div>
+    <div id="ticker-text">[SYS_OK] All 12 servomotors nominal. Vector drive ready.</div>
+  </footer>
+
+  <script>
+    let estopLatched = false;
+    let flashState = false;
+    let cadence = 150;
+    let targetIp = '192.168.1.91';
+
+    const knob = document.getElementById('joy-knob');
+    const pad = document.getElementById('joy-pad');
+    const ticker = document.getElementById('ticker-text');
+    const alarmFlash = document.getElementById('alarm-flash');
+    const torqueLbl = document.getElementById('torque-lbl');
+    const statusDot = document.getElementById('status-dot');
+
+    async function fetchRobot(path, params = {}) {
+      const qs = new URLSearchParams(params).toString();
+      const url = `http://${targetIp}${path}${qs ? '?' + qs : ''}`;
+      try {
+        return await fetch(url, { signal: AbortSignal.timeout(1500) });
+      } catch(e) {
+        return { ok: false };
+      }
+    }
+
+    function handleEstop() {
+      estopLatched = !estopLatched;
+      alarmFlash.classList.toggle('active', estopLatched);
+      statusDot.classList.toggle('alert', estopLatched);
+      torqueLbl.textContent = estopLatched ? 'DISARMED' : 'ARMED';
+      torqueLbl.style.color = estopLatched ? 'var(--crimson)' : 'var(--emerald)';
+      ticker.textContent = estopLatched
+        ? '[CRITICAL] Emergency Stop Engaged! Actuators Safe-Halted.'
+        : '[RECOVER] Emergency Stop Reset. Torque Armed.';
+      fetchRobot(estopLatched ? '/estop' : '/estop/clear');
+    }
+
+    function updateCadence(val) {
+      cadence = parseInt(val);
+      document.getElementById('cad-display').textContent = val + 'ms';
+    }
+
+    async function sendMacro(mode) {
+      if(estopLatched) return;
+      ticker.textContent = `[MACRO_DISPATCH] Executing stance: ${mode.toUpperCase()}...`;
+      fetchRobot('/cmd', { mode });
+    }
+
+    async function toggleFlash() {
+      flashState = !flashState;
+      const btn = document.getElementById('btn-flash');
+      btn.style.color = flashState ? 'var(--amber)' : '';
+      ticker.textContent = `[FLASH] Optical torch ${flashState ? 'ON' : 'OFF'}`;
+      fetchRobot('/flash', { state: flashState ? 1 : 0 });
+    }
+
+    // Pointer-based analog joystick engine
+    let dragging = false;
+    let padRect = null;
+    const maxRadius = 45;
+
+    pad.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      pad.setPointerCapture(e.pointerId);
+      padRect = pad.getBoundingClientRect();
+      moveJoystick(e);
+    });
+
+    pad.addEventListener('pointermove', (e) => {
+      if(!dragging) return;
+      moveJoystick(e);
+    });
+
+    function endJoystick() {
+      if(!dragging) return;
+      dragging = false;
+      knob.style.transform = 'translate(0px, 0px)';
+      document.getElementById('vel-stat').textContent = '0.0 m/s';
+      ticker.textContent = '[DRIVE] Vector idle (Stand mode).';
+      fetchRobot('/cmd', { mode: 'stand' });
+    }
+
+    pad.addEventListener('pointerup', endJoystick);
+    pad.addEventListener('pointercancel', endJoystick);
+
+    let lastSend = 0;
+    function moveJoystick(e) {
+      const centerX = padRect.left + padRect.width / 2;
+      const centerY = padRect.top + padRect.height / 2;
+      let dx = e.clientX - centerX;
+      let dy = e.clientY - centerY;
+      const dist = Math.hypot(dx, dy);
+
+      if(dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+      // Normalized vector calculations: vx (-1 to 1), wz (-1 to 1)
+      const vx = (-dy / maxRadius);
+      const wz = (-dx / maxRadius);
+
+      const speed = Math.abs(vx) * 0.8;
+      document.getElementById('vel-stat').textContent = speed.toFixed(2) + ' m/s';
+
+      const now = Date.now();
+      if(now - lastSend > 120 && !estopLatched) {
+        lastSend = now;
+        ticker.textContent = `[DRIVE] VX: ${vx.toFixed(2)} | WZ: ${wz.toFixed(2)} (${cadence}ms)`;
+        fetchRobot('/cmd', { mode: 'walk', vx: vx.toFixed(2), vy: 0, wz: wz.toFixed(2), speed: (150 / cadence).toFixed(2) });
+      }
+    }
+
+    // Dynamic simulation loop for attitude/gait telemetry
+    let simAngle = 0;
+    setInterval(() => {
+      if(!estopLatched) {
+        simAngle += 0.08;
+        const roll = (Math.sin(simAngle * 0.7) * 2.8).toFixed(1);
+        const pitch = (Math.cos(simAngle * 0.5) * 1.8).toFixed(1);
+        document.getElementById('pitch-stat').textContent = (pitch >= 0 ? '+' : '') + pitch + '°';
+        document.getElementById('roll-stat').textContent = (roll >= 0 ? '+' : '') + roll + '°';
+
+        if(dragging) {
+          const phase = Math.sin(simAngle * 3) > 0;
+          document.getElementById('pill-fl').className = 'leg-pill ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('pill-br').className = 'leg-pill ' + (phase ? 'grounded' : 'swing');
+          document.getElementById('pill-fr').className = 'leg-pill ' + (!phase ? 'grounded' : 'swing');
+          document.getElementById('pill-bl').className = 'leg-pill ' + (!phase ? 'grounded' : 'swing');
+        }
+      }
+    }, 100);
+  </script>
+</body>
+</html>

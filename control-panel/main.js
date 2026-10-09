@@ -686,7 +686,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       'btn-sit': 'sit',
       'btn-stretch': 'stretch',
       'btn-wag': 'wag',
-      'btn-wave': 'wave'
+      'btn-wave': 'wave',
+      'btn-play-bow': 'play_bow',
+      'btn-curious': 'curious'
   };
   for (const [id, mode] of Object.entries(emotes)) {
       const btn = document.getElementById(id);
@@ -841,6 +843,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     const k = e.key.toLowerCase();
     if(keys[k]) stopDirection(k);
   });
+
+  // --- GAMEPAD SUPPORT ---
+  let gamepadConnected = false;
+  let gamepadLoopRunning = false;
+  let prevGamepadState = { vx: 0, wz: 0, buttons: [] };
+
+  window.addEventListener('gamepadconnected', (e) => {
+    logTerminal(`GAMEPAD CONNECTED: ${e.gamepad.id}`);
+    gamepadConnected = true;
+    if (!gamepadLoopRunning) {
+      gamepadLoopRunning = true;
+      requestAnimationFrame(pollGamepad);
+    }
+  });
+
+  window.addEventListener('gamepaddisconnected', (e) => {
+    logTerminal(`GAMEPAD DISCONNECTED: ${e.gamepad.id}`);
+    gamepadConnected = false;
+  });
+
+  function pollGamepad() {
+    if (!gamepadConnected) {
+      gamepadLoopRunning = false;
+      return;
+    }
+    const gamepads = navigator.getGamepads();
+    const gp = gamepads[0];
+    if (gp) {
+      const db = 0.15;
+      let vx = 0, wz = 0;
+      if (Math.abs(gp.axes[1]) > db) vx = -gp.axes[1];
+      if (Math.abs(gp.axes[2]) > db) wz = -gp.axes[2];
+      else if (Math.abs(gp.axes[0]) > db) wz = -gp.axes[0];
+
+      const btnState = gp.buttons.map(b => b.pressed);
+      
+      if (Math.abs(vx) > 0 || Math.abs(wz) > 0) {
+        const paceVal = parseInt(sliderPace ? sliderPace.value : 150);
+        const speed = 150.0 / paceVal;
+        if (Math.abs(prevGamepadState.vx - vx) > 0.1 || Math.abs(prevGamepadState.wz - wz) > 0.1 || activeDir === 'IDLE') {
+           activeDir = 'GAMEPAD';
+           dispatchCmd({ mode: 'walk', vx: vx.toFixed(2), vy: 0, wz: wz.toFixed(2), speed: speed.toFixed(2) });
+           prevGamepadState.vx = vx;
+           prevGamepadState.wz = wz;
+        }
+      } else if (activeDir === 'GAMEPAD') {
+         activeDir = 'IDLE';
+         dispatchCmd({ mode: 'stand' });
+         prevGamepadState.vx = 0;
+         prevGamepadState.wz = 0;
+      }
+
+      const justPressed = (idx) => btnState[idx] && !prevGamepadState.buttons[idx];
+      if (justPressed(0)) dispatchCmd({ mode: 'sit' });
+      if (justPressed(1)) dispatchCmd({ mode: 'stand' });
+      if (justPressed(2)) dispatchCmd({ mode: 'wave' });
+      if (justPressed(3)) dispatchCmd({ mode: 'dance' });
+      if (justPressed(4)) dispatchCmd({ mode: 'stretch' });
+      if (justPressed(5)) dispatchCmd({ mode: 'wag' });
+      if (justPressed(7)) triggerEmergencyStop();
+      if (justPressed(9)) { if(btnCapture) btnCapture.click(); }
+      
+      prevGamepadState.buttons = btnState;
+    }
+    requestAnimationFrame(pollGamepad);
+  }
 
   // Keep alive heartbeat while moving
   setInterval(() => {

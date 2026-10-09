@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S.O.L.A.R. Operator Deck // Tactical Field HUD</title>
+  <style>
+    :root {
+      --bg-field: #0d0f12;
+      --hud-panel: rgba(18, 22, 28, 0.88);
+      --hud-bezel: #252d38;
+      --hazard: #eab308;
+      --hazard-dim: rgba(234, 179, 8, 0.15);
+      --accent-red: #ef4444;
+      --accent-green: #22c55e;
+      --text-bright: #ffffff;
+      --text-dim: #94a3b8;
+      --hud-cyan: #06b6d4;
+      --font-display: "Impact", "Arial Black", -apple-system, sans-serif;
+      --font-mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+    body {
+      background: var(--bg-field);
+      color: var(--text-bright);
+      font-family: var(--font-mono);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Top Tactical Heading Tape */
+    .tactical-header {
+      height: 48px;
+      background: #12161c;
+      border-bottom: 2px solid var(--hud-bezel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 20;
+    }
+
+    .unit-callsign {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      font-size: 13px;
+    }
+    .unit-callsign .tag {
+      background: var(--hazard);
+      color: #000;
+      padding: 2px 6px;
+      font-weight: 900;
+      border-radius: 2px;
+      font-size: 11px;
+    }
+
+    /* Compass Heading Tape */
+    .compass-tape {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: #090b0e;
+      border: 1px solid var(--hud-bezel);
+      padding: 4px 16px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--hazard);
+      font-weight: 700;
+      position: relative;
+    }
+    .compass-marker { color: #fff; border-bottom: 2px solid var(--hazard); }
+
+    .sys-vitals {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11px;
+    }
+    .vital-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vital-bar {
+      width: 50px;
+      height: 8px;
+      background: #1e293b;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .vital-fill {
+      height: 100%;
+      background: var(--accent-green);
+    }
+
+    /* Main Immersive HUD Arena */
+    .hud-arena {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at center, #131922 0%, #06080b 90%);
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* Tactical Camera Grid & Reticle Overlay */
+    .camera-viewport {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .reticle-tactical-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .feed-silhouette {
+      opacity: 0.35;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* Flanking Thumb Controls (Boston Dynamics Spot Style) */
+    .thumb-cluster-left {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      z-index: 10;
+      background: var(--hud-panel);
+      border: 2px solid var(--hud-bezel);
+      border-radius: 12px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .cluster-title {
+      font-size: 10px;
+      color: var(--hazard);
+      letter-spacing: 0.1em;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .joystick-pad {
+      width: 140px;
+      height: 140px;
+      background: #090c10;
+      border: 2px solid #232b36;
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 4px 12px rgba(0,0,0,0.8);
+    }
+
+    .joy-stick-knob {
+      width: 58px;
+      height: 58px;
+      background: linear-gradient(145deg, #2a3442, #171f28);
+      border: 2px solid var(--hud-cyan);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: var(--hud-cyan);
+      cursor: grab;
+      transition: transform 0.08s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }
+
+    .dpad-arrows {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .dpad-arrows span {
+      position: absolute;
+      font-size: 12px;
+      color: #475569;
+      font-weight: 900;
+    }
+    .arr-up { top: 8px; left: 50%; transform: translateX(-50%); }
+    .arr-dn { bottom: 8px; left: 50%; transform: translateX(-50%); }
+    .arr-lt { left: 8px; top: 50%; transform: translateY(-50%); }
+    .arr-rt { right: 8px; top: 50%; transform: translateY(-50%); }
+
+    /* Right Thumb Cluster: Macro Bank & E-STOP */
+    .thumb-cluster-right {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      z-index: 10;
+      background: var(--hud-panel);
+      border: 2px solid var(--hud-bezel);
+      border-radius: 12px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 260px;
+    }
+
+    .macro-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-tactical {
+      background: #171f28;
+      border: 1px solid #2d3748;
+      color: var(--text-bright);
+      padding: 12px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.1s, border-color 0.1s, transform 0.05s;
+    }
+    .btn-tactical:hover { border-color: var(--hazard); background: #202b38; }
+    .btn-tactical:active { transform: scale(0.96); background: var(--hazard); color: #000; }
+    .btn-tactical span.sub { font-size: 8px; color: var(--text-dim); }
+
+    /* Hazard Slap-Button */
+    .slap-estop {
+      height: 48px;
+      background: repeating-linear-gradient(
+        45deg,
+        #dc2626,
+        #dc2626 10px,
+        #991b1b 10px,
+        #991b1b 20px
+      );
+      border: 2px solid #ef4444;
+      color: #fff;
+      font-family: var(--font-display);
+      font-size: 18px;
+      letter-spacing: 0.15em;
+      font-weight: 900;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+      transition: transform 0.08s;
+    }
+    .slap-estop:active { transform: scale(0.97); }
+
+    /* Center Top Telemetry HUD Box */
+    .hud-attitude-center {
+      position: absolute;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 14, 18, 0.8);
+      border: 1px solid rgba(234, 179, 8, 0.4);
+      border-radius: 8px;
+      padding: 8px 16px;
+      display: flex;
+      gap: 24px;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+    }
+    .hud-stat { display: flex; flex-direction: column; align-items: center; }
+    .hud-stat .val { font-size: 15px; font-weight: 800; color: var(--hazard); }
+    .hud-stat .lbl { font-size: 9px; color: var(--text-dim); text-transform: uppercase; }
+
+    /* Bottom Live Log Strip */
+    .bottom-ticker {
+      height: 36px;
+      background: #090c10;
+      border-top: 2px solid var(--hud-bezel);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-dim);
+      z-index: 20;
+    }
+    .ticker-icon { color: var(--accent-green); }
+    .ticker-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+
+  <header class="tactical-header">
+    <div class="unit-callsign">
+      <span class="tag">FIELD OP</span>
+      <span>S.O.L.A.R. TACTICAL HUD // 192.168.1.91</span>
+    </div>
+
+    <div class="compass-tape">
+      <span>240°</span>
+      <span>255°</span>
+      <span class="compass-marker">[ 270° W ]</span>
+      <span>285°</span>
+      <span>300°</span>
+    </div>
+
+    <div class="sys-vitals">
+      <div class="vital-pill">
+        <span>RF RSSI</span>
+        <span style="color:var(--accent-green);">-58 dBm</span>
+      </div>
+      <div class="vital-pill">
+        <span>BATTERY</span>
+        <div class="vital-bar"><div class="vital-fill" style="width: 88%;"></div></div>
+        <span>88%</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="hud-arena">
+    <!-- Center Top Telemetry -->
+    <div class="hud-attitude-center">
+      <div class="hud-stat"><span class="val">0.6 m/s</span><span class="lbl">Gait Velocity</span></div>
+      <div class="hud-stat"><span class="val">+1.2°</span><span class="lbl">Pitch Ladder</span></div>
+      <div class="hud-stat"><span class="val">-0.5°</span><span class="lbl">Roll Angle</span></div>
+      <div class="hud-stat"><span class="val" style="color:var(--accent-green);">STANDBY</span><span class="lbl">Torque Mode</span></div>
+    </div>
+
+    <!-- Camera Viewport with HUD -->
+    <div class="camera-viewport">
+      <svg class="reticle-tactical-svg" viewBox="0 0 600 400">
+        <!-- HUD Flight Brackets -->
+        <path d="M 40 60 L 40 40 L 60 40" stroke="#eab308" stroke-width="2" fill="none" />
+        <path d="M 560 60 L 560 40 L 540 40" stroke="#eab308" stroke-width="2" fill="none" />
+        <path d="M 40 340 L 40 360 L 60 360" stroke="#eab308" stroke-width="2" fill="none" />
+        <path d="M 560 340 L 560 360 L 540 360" stroke="#eab308" stroke-width="2" fill="none" />
+
+        <!-- Center Targeting Circle -->
+        <circle cx="300" cy="200" r="40" stroke="#eab308" stroke-width="1.5" fill="none" stroke-dasharray="8 4" />
+        <circle cx="300" cy="200" r="4" fill="#eab308" />
+        <line x1="240" y1="200" x2="270" y2="200" stroke="#eab308" stroke-width="2" />
+        <line x1="330" y1="200" x2="360" y2="200" stroke="#eab308" stroke-width="2" />
+      </svg>
+
+      <div class="feed-silhouette">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <circle cx="12" cy="10" r="3" />
+          <line x1="6" y1="21" x2="18" y2="21" />
+        </svg>
+        <span style="color: var(--hazard); letter-spacing: 0.1em; font-weight: 700;">[ OPTICAL RECON STREAM // OV2640 ]</span>
+      </div>
+    </div>
+
+    <!-- Left Thumb Controller -->
+    <div class="thumb-cluster-left">
+      <div class="cluster-title">VECTOR DRIVE</div>
+      <div class="joystick-pad" id="joy-pad">
+        <div class="dpad-arrows">
+          <span class="arr-up">▲ W</span>
+          <span class="arr-dn">▼ S</span>
+          <span class="arr-lt">◀ A</span>
+          <span class="arr-rt">▶ D</span>
+        </div>
+        <div class="joy-stick-knob" id="joy-knob">
+          ●
+        </div>
+      </div>
+      <div style="width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim);">
+        <span>CADENCE</span>
+        <span id="cad-display" style="color:var(--hazard);">140ms</span>
+      </div>
+      <input type="range" min="40" max="300" value="140" style="width: 100%; accent-color: var(--hazard);" oninput="document.getElementById('cad-display').textContent = this.value + 'ms'" />
+    </div>
+
+    <!-- Right Thumb Cluster -->
+    <div class="thumb-cluster-right">
+      <div class="cluster-title">TACTICAL COMBAT MACROS</div>
+      <div class="macro-grid">
+        <button class="btn-tactical" onclick="triggerMacro('STAND')">STAND<span class="sub">READY</span></button>
+        <button class="btn-tactical" onclick="triggerMacro('TURTLE')">TURTLE<span class="sub">SHIELD</span></button>
+        <button class="btn-tactical" onclick="triggerMacro('SIT')">SIT<span class="sub">REST</span></button>
+        <button class="btn-tactical" onclick="triggerMacro('FLIP')">RECOVER<span class="sub">SELF-RIGHT</span></button>
+        <button class="btn-tactical" onclick="triggerMacro('DANCE')">DANCE<span class="sub">DEMO</span></button>
+        <button class="btn-tactical" onclick="triggerMacro('FLASH')">FLASH<span class="sub">LIGHT</span></button>
+      </div>
+      <button class="slap-estop" onclick="slapEstop()">E-STOP HALT</button>
+    </div>
+  </main>
+
+  <footer class="bottom-ticker">
+    <span class="ticker-icon">● LIVE</span>
+    <span class="ticker-text" id="ticker-text">[SYS_OK] All 12 servomotors engaged. ESP32-CAM optical heartbeat normal. Ready for field deployment.</span>
+  </footer>
+
+  <script>
+    // Joystick drag and keyboard interaction
+    const knob = document.getElementById('joy-knob');
+    const pad = document.getElementById('joy-pad');
+    const ticker = document.getElementById('ticker-text');
+
+    function triggerMacro(name) {
+      ticker.textContent = `[ACTION_DISPATCH] Executing macro sequence: ${name}... ACK`;
+    }
+
+    function slapEstop() {
+      ticker.textContent = `[EMERGENCY_ESTOP] Slap button engaged! Cutting power to PCA9685 servo driver!`;
+      document.body.style.boxShadow = 'inset 0 0 40px red';
+      setTimeout(() => document.body.style.boxShadow = '', 400);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if(k === 'w') knob.style.transform = 'translateY(-30px)';
+      if(k === 's') knob.style.transform = 'translateY(30px)';
+      if(k === 'a') knob.style.transform = 'translateX(-30px)';
+      if(k === 'd') knob.style.transform = 'translateX(30px)';
+      if(['w','a','s','d'].includes(k)) {
+        ticker.textContent = `[DRIVE_CMD] Vector step: ${k.toUpperCase()} (140ms step interval)`;
+      }
+    });
+
+    window.addEventListener('keyup', () => {
+      knob.style.transform = 'translate(0, 0)';
+    });
+  </script>
+</body>
+</html>
