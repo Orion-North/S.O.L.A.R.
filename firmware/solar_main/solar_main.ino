@@ -300,7 +300,8 @@ float boundedArg(const String& name, float fallback, float minVal, float maxVal)
 bool isAllowedMode(const String& mode) {
   return mode == "stand" || mode == "idle" || mode == "manual" || mode == "walk" ||
          mode == "sit" || mode == "stretch" || mode == "wag" || mode == "dance" ||
-         mode == "flip" || mode == "wave" || mode == "rl";
+         mode == "flip" || mode == "wave" || mode == "rl" ||
+         mode == "play_bow" || mode == "curious";
 }
 
 bool solarPanelAdcEnabled() {
@@ -749,6 +750,8 @@ uint8_t modeCode(const String& mode) {
   if (mode == "rl") return 10;
   if (mode == "wave") return 11;
   if (mode == "charge_rest") return 12;
+  if (mode == "play_bow") return 13;
+  if (mode == "curious") return 14;
   return 0;
 }
 
@@ -929,14 +932,14 @@ void applyRlActions(const float actions[12], float outputScale) {
 
 void setWaveSupportTargets() {
   // Brace the three planted legs in a wide tripod so the front-left leg can lift.
-  setLegTarget(1, 90 + 18 * sign_H[1], 90 + 24 * sign_K[1], 90 + 18 * sign_F[1]);
-  setLegTarget(2, 90 + 18 * sign_H[2], 90 + 24 * sign_K[2], 90 + 18 * sign_F[2]);
-  setLegTarget(3, 90 + 18 * sign_H[3], 90 + 24 * sign_K[3], 90 + 18 * sign_F[3]);
+  setLegTarget(1, 90, 90, 90);
+  setLegTarget(2, 90 - 65, 90, 90);
+  setLegTarget(3, 90, 90, 90);
 }
 
 void setFrontLeftWaveTarget(float footWaveDeg) {
-  float footAngle = constrain(90 + 35 * sign_F[0] + footWaveDeg * sign_F[0], 35.0f, 155.0f);
-  setLegTarget(0, 90 - 10 * sign_H[0], 90 - 48 * sign_K[0], footAngle);
+  float footAngle = constrain(90 - 45 * sign_F[0] + footWaveDeg * sign_F[0], 35.0f, 155.0f);
+  setLegTarget(0, 90 - 10 * sign_H[0], 90 + 35 * sign_K[0], footAngle);
 }
 
 void blinkStatusLed(int count, int onMs, int offMs) {
@@ -1227,8 +1230,8 @@ void gaitTask(void *pvParameters) {
     bool localServoOutputEnabled[16];
 
     lockState();
-    // Safety watchdog: fallback to idle if no commands received
-    if (now - last_cmd_time > 2000 && cmd_mode != "idle" && cmd_mode != "stand" && cmd_mode != "charge_rest" && !calibrationMode) {
+    // Safety watchdog: fallback to idle if no commands received (only for active movement modes)
+    if (now - last_cmd_time > 2000 && (cmd_mode == "walk" || cmd_mode == "manual" || cmd_mode == "rl")) {
         cmd_mode = "idle";
         cmd_vx = 0; cmd_vy = 0; cmd_wz = 0;
     }
@@ -1278,6 +1281,23 @@ void gaitTask(void *pvParameters) {
             setLegTarget(2, 90, 90, 90);
             setLegTarget(3, 90, 90, 90);
         }
+        else if (mode == "play_bow") {
+            emote_phase += dt * 5.0; // tail wag
+            float wag = sin(emote_phase * PI * 2) * 25.0;
+            setLegTarget(0, 90 - 20 * sign_H[0], 90 + 60 * sign_K[0], 90 + 60 * sign_F[0]);
+            setLegTarget(1, 90 + 20 * sign_H[1], 90 + 60 * sign_K[1], 90 + 60 * sign_F[1]);
+            setLegTarget(2, 90 + wag * sign_H[2], 90, 90);
+            setLegTarget(3, 90 - wag * sign_H[3], 90, 90);
+        }
+        else if (mode == "curious") {
+            emote_phase += dt * 0.5; // slow tilt
+            float tilt = sin(emote_phase * PI * 2) * 25.0;
+            setLegTarget(2, 90, 90, 90);
+            setLegTarget(3, 90, 90, 90);
+            // Smoothly shift weight left and right by extending/retracting
+            setLegTarget(0, 90, 90 + tilt * sign_K[0], 90 + tilt * sign_F[0]);
+            setLegTarget(1, 90, 90 - tilt * sign_K[1], 90 - tilt * sign_F[1]);
+        }
         else if (mode == "wag") {
             emote_phase += dt * 5.0; // fast wag
             float wag = sin(emote_phase * PI * 2) * 30.0;
@@ -1286,10 +1306,62 @@ void gaitTask(void *pvParameters) {
             setLegTarget(3, 90 - wag * sign_H[3], 90, 90);
         }
         else if (mode == "dance") {
-            emote_phase += dt * 2.0; 
-            float dance = sin(emote_phase * PI * 2) * 30.0;
-            for(int i=0; i<4; i++) {
-                setLegTarget(i, 90, 90 + abs(dance) * sign_K[i], 90 + abs(dance) * sign_F[i]);
+            emote_phase += dt; // 1 second per unit
+            float cycle = fmod(emote_phase, 8.0);
+            
+            if (cycle < 2.0) {
+                // 1. Swaying hips side to side
+                float sway_t = cycle * 1.5;
+                float sway = sin(sway_t * PI * 2.0) * 35.0;
+                for(int i=0; i<4; i++) {
+                    setLegTarget(i, 90 + sway * sign_H[i], 90, 90);
+                }
+            } else if (cycle < 4.0) {
+                // 2. Bobbing up and down
+                float bob_t = (cycle - 2.0) * 2.0;
+                float bob = sin(bob_t * PI * 2.0) * 30.0;
+                for(int i=0; i<4; i++) {
+                    setLegTarget(i, 90, 90 + abs(bob) * sign_K[i], 90 + abs(bob) * sign_F[i]);
+                }
+            } else if (cycle < 6.0) {
+                // 3. Alternate front leg taps
+                float tap_t = (cycle - 4.0) * 2.0;
+                float tap_val = sin(tap_t * PI * 2.0);
+                
+                if (tap_val > 0) {
+                    // Tap Front Left (leg 0), shift COM right
+                    float lift = tap_val * 40.0;
+                    setLegTarget(0, 90, 90 + lift * sign_K[0], 90 + lift * sign_F[0]);
+                    setLegTarget(1, 90 + 20 * sign_H[1], 90, 90);
+                    setLegTarget(2, 90 - 20 * sign_H[2], 90, 90);
+                    setLegTarget(3, 90, 90, 90);
+                } else {
+                    // Tap Front Right (leg 1), shift COM left
+                    float lift = -tap_val * 40.0;
+                    setLegTarget(1, 90, 90 + lift * sign_K[1], 90 + lift * sign_F[1]);
+                    setLegTarget(0, 90 + 20 * sign_H[0], 90, 90);
+                    setLegTarget(2, 90, 90, 90);
+                    setLegTarget(3, 90 - 20 * sign_H[3], 90, 90);
+                }
+            } else {
+                // 4. Seated wave
+                float wave_t = (cycle - 6.0);
+                // Lower rear legs to a seated posture (weight shift back)
+                setLegTarget(2, 90, 90 + 45 * sign_K[2], 90 + 45 * sign_F[2]);
+                setLegTarget(3, 90, 90 + 45 * sign_K[3], 90 + 45 * sign_F[3]);
+                // Front right braces wide
+                setLegTarget(1, 90 + 20 * sign_H[1], 90, 90);
+                // Front left waves (utilizing sweep and lift)
+                float wave_angle = sin(wave_t * PI * 2.0 * 2.0) * 35.0; 
+                setFrontLeftWaveTarget(wave_angle);
+            }
+            
+            if (emote_phase >= 8.0) {
+                for(int i=0; i<4; i++) setLegTarget(i, 90, 90, 90);
+                lockState();
+                cmd_mode = "stand";
+                unlockState();
+                emote_phase = 0;
             }
         }
         else if (mode == "flip") {
@@ -1457,8 +1529,8 @@ void setup() {
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000);
-  Wire1.begin(I2C_IMU_SDA, I2C_IMU_SCL);
-  Wire1.setClock(100000);
+  //Wire1.begin(I2C_IMU_SDA, I2C_IMU_SCL);
+  //Wire1.setClock(100000);
 
   if (detectI2C(Wire, 0x40)) {
     sysDebug += "I2C SCAN: PCA9685 FOUND AT 0x40\n";
@@ -1496,12 +1568,12 @@ void setup() {
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY; 
   
   if(psramFound()){
-    config.frame_size = FRAMESIZE_QQVGA; // Downgraded to QQVGA for stability
-    config.jpeg_quality = 25; 
-    config.fb_count = 1; // Double buffering uses too much DMA mapping
+    config.frame_size = FRAMESIZE_VGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 2;
   } else {
-    config.frame_size = FRAMESIZE_QQVGA; 
-    config.jpeg_quality = 25;
+    config.frame_size = FRAMESIZE_SVGA;
+    config.jpeg_quality = 12;
     config.fb_count = 1;
   }
   
@@ -1520,6 +1592,8 @@ void setup() {
       s->set_awb_gain(s, 1);       
       s->set_gain_ctrl(s, 1);      
       s->set_brightness(s, 1);     
+      s->set_vflip(s, 1);
+      s->set_hmirror(s, 1);
   }
 
   // Define HTTP Handlers
@@ -2140,7 +2214,7 @@ void setup() {
   ArduinoOTA.begin(); 
   
   server.begin();
-
+  
   // Create Gait Task on Core 1 (App Core)
   xTaskCreatePinnedToCore(
     gaitTask, "GaitTask", 4096, NULL, 2, NULL, 1);
@@ -2148,9 +2222,14 @@ void setup() {
     imuTask, "ImuTask", 4096, NULL, 1, NULL, 1);
 }
 
+void handlePS5() {
+  // Removed to save memory
+}
+
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
+  // handlePS5(); disabled to save memory
   updateAliveLight();
 
   bool shouldRunTestSeq = false;
