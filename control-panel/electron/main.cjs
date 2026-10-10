@@ -6,10 +6,12 @@ const isDev = Boolean(process.env.SOLAR_CONTROL_DEV_SERVER);
 const routePolicy = new Map([
   ['/ping', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET']) }],
   ['/status', { minIntervalMs: 1000, timeoutMs: 1800, methods: new Set(['GET']) }],
-  ['/capture', { minIntervalMs: 150, timeoutMs: 2500, methods: new Set(['GET']) }],
+  ['/capture', { minIntervalMs: 50, timeoutMs: 2500, methods: new Set(['GET']) }],
   ['/cmd', { minIntervalMs: 80, timeoutMs: 800, methods: new Set(['GET', 'POST']) }],
   ['/rl', { minIntervalMs: 50, timeoutMs: 800, methods: new Set(['GET', 'POST']) }],
   ['/imu', { minIntervalMs: 50, timeoutMs: 1200, methods: new Set(['GET']) }],
+  ['/imu/calibrate', { minIntervalMs: 1000, timeoutMs: 1200, methods: new Set(['POST']) }],
+  ['/imu/calibration/reset', { minIntervalMs: 1000, timeoutMs: 1200, methods: new Set(['POST']) }],
   ['/obs', { minIntervalMs: 50, timeoutMs: 1200, methods: new Set(['GET']) }],
   ['/flash', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
   ['/flash/auto', { minIntervalMs: 250, timeoutMs: 1200, methods: new Set(['GET', 'POST']) }],
@@ -75,7 +77,9 @@ async function requestRobot(_event, payload = {}) {
   const now = Date.now();
   const lastHit = lastRouteHit.get(route) || 0;
   const elapsed = now - lastHit;
-  if (elapsed < policy.minIntervalMs) {
+  // Releasing a control must reach the robot even immediately after walking.
+  const isStopCommand = route === '/cmd' && ['stand', 'idle'].includes(payload.params?.mode);
+  if (!isStopCommand && elapsed < policy.minIntervalMs) {
     return {
       ok: false,
       status: 429,
@@ -101,13 +105,19 @@ async function requestRobot(_event, payload = {}) {
     });
 
     const contentType = upstream.headers.get('content-type') || '';
+    const responseHeaders = {};
+    for (const name of ['x-camera-interval-ms', 'x-retry-after-ms', 'x-camera-frame-ms']) {
+      const value = upstream.headers.get(name);
+      if (value !== null) responseHeaders[name] = value;
+    }
     if (payload.responseType === 'blob' || contentType.startsWith('image/')) {
       const buffer = Buffer.from(await upstream.arrayBuffer());
       return {
         ok: upstream.ok,
         status: upstream.status,
         contentType,
-        bodyBase64: buffer.toString('base64'),
+        headers: responseHeaders,
+        bodyBytes: new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength),
       };
     }
 
@@ -115,6 +125,7 @@ async function requestRobot(_event, payload = {}) {
       ok: upstream.ok,
       status: upstream.status,
       contentType,
+      headers: responseHeaders,
       text: await upstream.text(),
     };
   } catch (error) {
@@ -134,7 +145,7 @@ function createWindow() {
     height: 920,
     minWidth: 1080,
     minHeight: 720,
-    backgroundColor: '#07090f',
+    backgroundColor: '#0b0e12',
     show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),

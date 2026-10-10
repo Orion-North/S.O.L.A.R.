@@ -103,7 +103,7 @@ match.
 | --- | --- | --- |
 | `3.3V` or `5V` | `VIN` / `VCC` | MPU-6050 breakout; use the board's labeled power input. |
 | `GND` | `GND` | Common ground. |
-| `GPIO13` | `SDA` | Firmware `Wire1.begin(13, 2)`. |
+| `GPIO13` | `SDA` | Dedicated SoftWire bus; hardware I2C1 is reserved for the camera. |
 | `GPIO2` | `SCL` | Boot-sensitive pin; avoid pulling it into a bad boot state. |
 
 ### Fallback Shared IMU Bus
@@ -117,6 +117,12 @@ Supported/recognized IMU addresses in firmware are `MPU6050`/compatible at
 `0x68` or `0x69`. The firmware uses the MPU-6050 accelerometer and gyroscope
 only; magnetometer, compass heading, barometer, pressure, and altitude telemetry
 are no longer part of the robot API.
+
+The dedicated bus uses 100 kHz software I2C with a separate mutex so sensor
+transactions do not hold the servo bus lock. The firmware reads all accelerometer
+and gyro registers in one burst at 50 Hz. After repeated read failures it retries
+detection on both buses. Failed reads do not advance the sample timestamp or
+sequence. `/i2c` reports pin levels and bus scans; `/imu` reports current readings.
 
 ## ESP32-CAM Camera Pins
 

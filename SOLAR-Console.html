@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0b0e12" />
+<title>SOLAR · Robot control</title>
+  <script type="module">
+(function(){let e=document.createElement(`link`).relList;if(e&&e.supports&&e.supports(`modulepreload`))return;for(let e of document.querySelectorAll(`link[rel="modulepreload"]`))n(e);new MutationObserver(e=>{for(let t of e)if(t.type===`childList`)for(let e of t.addedNodes)e.tagName===`LINK`&&e.rel===`modulepreload`&&n(e)}).observe(document,{childList:!0,subtree:!0});function t(e){let t={};return e.integrity&&(t.integrity=e.integrity),e.referrerPolicy&&(t.referrerPolicy=e.referrerPolicy),e.crossOrigin===`use-credentials`?t.credentials=`include`:e.crossOrigin===`anonymous`?t.credentials=`omit`:t.credentials=`same-origin`,t}function n(e){if(e.ep)return;e.ep=!0;let n=t(e);fetch(e.href,n)}})();async function e(e,t=()=>{},n=e=>new Promise(t=>setTimeout(t,e))){let r=await e(`/imu/calibrate`,{},{method:`POST`});if(!r.ok)throw Error(await r.text()||`Zero rejected (${r.status})`);for(let r=0;r<40;r++){await n(250);let r=await e(`/imu`,{},{cache:`no-store`});if(r.status===429)continue;if(!r.ok)throw Error(`Calibration status unavailable (${r.status}); check IMU telemetry before retrying`);let i=await r.json();if(t(i),i.calibration_state===`complete`&&i.calibrated)return i;if(i.calibration_state===`failed`)throw Error(i.calibration_message||`Calibration failed; previous zero retained`)}throw Error(`Calibration confirmation timed out; check IMU telemetry before retrying`)}async function t(e){let t=await e(`/imu/calibration/reset`,{},{method:`POST`});if(!t.ok)throw Error(await t.text()||`Reset rejected (${t.status})`);return t.json()}function n(e){return e?e.calibration_state===`collecting`?`SAMPLING ${e.calibration_samples||0}/100 · HOLD STILL`:e.calibration_state===`saving`?`ZERO WRITE PENDING`:e.calibration_state===`failed`?e.calibration_message||`Calibration failed`:e.calibrated?`ZERO STORED`:`ZERO UNSET`:`IMU NO DATA`}document.addEventListener(`DOMContentLoaded`,async()=>{let r=window.solarDesktop||null,i=document.getElementById(`ip-input`),a=document.getElementById(`token-input`),o=document.getElementById(`proxy-mode-text`),s={},c=null;if(r)try{s=await r.readConfig(),c=await r.appInfo()}catch{s={}}let l=s.apiToken||localStorage.getItem(`solar_api_token`)||``;a&&(a.value=l),o&&(o.textContent=c&&c.desktopProxy?`PROXY v${c.version}`:`DIRECT`);let ee=document.querySelectorAll(`.nav-btn`);ee.forEach(e=>{e.addEventListener(`click`,()=>{J(),W=e.getAttribute(`data-target`)===`view-tactical`,ee.forEach(e=>{e.classList.remove(`active`),e.setAttribute(`aria-pressed`,`false`)}),e.classList.add(`active`),e.setAttribute(`aria-pressed`,`true`);let t=e.getAttribute(`data-target`);document.getElementById(`view-tactical`).style.display=t===`view-tactical`?`grid`:`none`,document.getElementById(`view-calib`).style.display=t===`view-calib`?`flex`:`none`,t===`view-calib`&&(document.getElementById(`view-calib`).style.flexDirection=`column`)})});let te=null;async function ne(e,t,n){if(!i.value.trim())return;let r=90+t-n;clearTimeout(te),te=setTimeout(async()=>{try{await g(`/test`,{motor:e,angle:r.toFixed(1)})}catch{}},40)}let re=document.getElementById(`apply-ip`),u=document.getElementById(`cam-stream`),d=document.getElementById(`camera-placeholder`),ie=document.getElementById(`btn-ping`),f=document.getElementById(`btn-flash`),ae=document.getElementById(`btn-live-feed`),oe=document.getElementById(`feed-status`),se=document.getElementById(`btn-estop`),ce=document.getElementById(`btn-clear-estop`),p=document.querySelector(`.target-ip-text`),m=document.querySelector(`.block`),le=document.getElementById(`terminal-out`),ue=document.getElementById(`telemetry-out`),h=document.getElementById(`coord-hud`),de=document.getElementById(`sys-time`),fe=document.getElementById(`calib-container`),pe=document.getElementById(`btn-save-calib`);function me(e,t={},n=null){let r=(n||i.value).trim();if(!r)return null;let a=/^https?:\/\//i.test(r)?r.replace(/\/+$/,``):`http://${r}`,o=new URLSearchParams(t).toString();return`${a}${e}${o?`?${o}`:``}`}function he(e={}){let t={...e};return l&&(t[`x-solar-token`]=l),t}function ge(e){let t=Number(e.status||502),n=new Headers;for(let[t,r]of Object.entries(e.headers||{}))n.set(t,r);if(e.retryAfterMs&&n.set(`x-retry-after-ms`,e.retryAfterMs),e.contentType&&n.set(`content-type`,e.contentType),e.bodyBytes)return new Response(new Blob([new Uint8Array(e.bodyBytes)],{type:e.contentType||`application/octet-stream`}),{status:t,headers:n});if(e.bodyBase64){let r=atob(e.bodyBase64),i=new Uint8Array(r.length);for(let e=0;e<r.length;e++)i[e]=r.charCodeAt(e);return new Response(new Blob([i],{type:e.contentType||`application/octet-stream`}),{status:t,headers:n})}return new Response(e.text||``,{status:t,headers:n})}async function _e(e){if(s={...s,...e},Object.prototype.hasOwnProperty.call(e,`apiToken`)&&localStorage.setItem(`solar_api_token`,e.apiToken),Object.prototype.hasOwnProperty.call(e,`targetIp`)&&localStorage.setItem(`solar_target_ip`,e.targetIp),r)try{await r.writeConfig(s)}catch{}}async function g(e,t={},n={}){let{targetOverride:a=null,headers:o={},...s}=n;if(r)return ge(await r.requestRobot({target:a||i.value,token:l,path:e,params:t,method:s.method||`GET`,timeoutMs:s.timeoutMs,responseType:e===`/capture`?`blob`:`text`}));let c=me(e,t,a);if(!c)throw Error(`Missing target`);return fetch(c,{...s,headers:he(o)})}function _(e){let t=new Date().toLocaleTimeString(`en-US`,{hour12:!1}),n=document.createElement(`div`);n.textContent=`> [${t}] ${e}`,le.appendChild(n),le.scrollTop=le.scrollHeight}setInterval(()=>{de.innerText=new Date().toLocaleTimeString(`en-US`,{hour12:!1})},1e3);let ve=s.targetIp||localStorage.getItem(`solar_target_ip`);ve?(i.value=ve,ye(ve)):_(`LINK IDLE`);async function ye(e){_(`LINK TX | ${e}`),p.innerText=`LINK PENDING`,m.classList.add(`offline`);try{let t=new AbortController,n=setTimeout(()=>t.abort(),2e3),r=await g(`/ping`,{},{signal:t.signal,targetOverride:e});if(clearTimeout(n),r.ok)_(`LINK ACK`),p.innerText=`LINK ${e}`,m.classList.remove(`offline`),ze(e);else throw Error(`Bad Status`)}catch{_(`LINK FAIL | ${e}`),p.innerText=`LINK OFFLINE`}}re.addEventListener(`click`,()=>{let e=i.value.trim();l=a?a.value.trim():l,e&&(_e({targetIp:e,apiToken:l}),J(),ye(e))}),ie.addEventListener(`click`,async()=>{let e=i.value.trim();if(!e)return;_(`PINGING ${e}...`),ie.innerText=`PING…`;let t=Date.now();try{let n=new AbortController,r=setTimeout(()=>n.abort(),2e3);await g(`/ping`,{},{signal:n.signal}),clearTimeout(r);let i=Date.now()-t;ie.innerText=`PING`,_(`REPLY FROM ${e}: TIME=${i}ms`)}catch{ie.innerText=`PING`,_(`REQUEST TIMED OUT FOR ${e}`)}});let v=!1,y=!1;function be(){f.textContent=y?`FLASH PENDING`:`FLASH `+(v?`ON`:`OFF`),f.setAttribute(`aria-pressed`,String(v)),f.classList.toggle(`active-state`,v),f.disabled=y}f.addEventListener(`click`,async()=>{if(!i.value.trim()||y)return;let e=!v;y=!0,be();try{let t=await g(`/flash`,{state:+!!e},{signal:AbortSignal.timeout(2e3),timeoutMs:2e3});if(!t.ok)throw Error(`Flash rejected: `+t.status);v=e,_(`FRONT FLASH: `+(v?`ON`:`OFF`))}catch(e){_(`FRONT FLASH FAILED: `+e.message)}finally{y=!1,be()}});let b=!1,xe=null,Se=!1,Ce=!1,we=null,x=null,Te=0,Ee=50,S=null;function De(e){b=e,clearTimeout(xe),!e&&x&&(x.abort(),x=null),ae.innerText=e?`STOP STREAM`:`STREAM`,ae.classList.toggle(`active-state`,e),oe&&(oe.textContent=e?`STREAM ACTIVE`:`FRAME IDLE`,oe.classList.toggle(`blink`,e)),e&&Oe()}async function Oe(){if(!i.value.trim()||Ce)return;Ce=!0,Te=Date.now();let e=new AbortController;x=e;try{let t=await g(`/capture`,{t:Date.now()},{cache:`no-store`,signal:e.signal});if(e.signal.aborted)return;let n=Number(t.headers.get(`x-camera-interval-ms`));if(n>=50&&n<=1e3&&(Ee=n),t.status===429){let e=Number(t.headers.get(`x-retry-after-ms`));C(e>0?Math.min(1e3,e+5):Ee);return}if(!t.ok)throw Error(`Capture failed: ${t.status}`);let r=await t.blob();if(e.signal.aborted)return;if(!r.type.startsWith(`image/`))throw Error(`Capture did not return an image`);let i=URL.createObjectURL(r),a=we;we=i,u.classList.remove(`has-frame`),u.src=i,a&&URL.revokeObjectURL(a)}catch{if(e.signal.aborted)return;b?(Se||=(_(`CAM RX DROP | RETRY`),!0),C(500)):(u.classList.remove(`has-frame`),d&&d.classList.remove(`hidden`),m.classList.add(`offline`),p.innerText=`LINK OFFLINE`,_(`CAM RX FAIL`))}finally{Ce=!1,x===e&&(x=null)}}function C(e){b&&(clearTimeout(xe),xe=setTimeout(Oe,e))}u.addEventListener(`load`,()=>{u.classList.add(`has-frame`),d&&d.classList.add(`hidden`),m.classList.remove(`offline`);let e=i.value.trim();e&&(p.innerText=`LINK ${e}`),Se=!1,C(Math.max(0,Ee+5-(Date.now()-Te)))}),u.addEventListener(`error`,async()=>{if(b){Se||=(_(`CAM RX DROP | RETRY`),!0),C(350);return}u.classList.remove(`has-frame`),d&&d.classList.remove(`hidden`),m.classList.add(`offline`),p.innerText=`LINK OFFLINE`,_(`CAM RX FAIL`)});function w(e){let t=!!(e&&e.accel_ready),n=!!(e&&e.gyro_ready);return{...e||{},imu_ready:!!(e&&Object.prototype.hasOwnProperty.call(e,`imu_ready`)?e.imu_ready:t||n),accel_ready:t,gyro_ready:n,received_at:Date.now()}}function ke(e){return S&&Date.now()-S.received_at<3e3?S:w(e)}function T(e,t){return Array.isArray(e)?e.map(e=>Number(e||0).toFixed(t)).join(` / `):`--`}function Ae(e){if(!e.imu_ready)return e.mpu6050_addr?`MPU READ ERROR`:`MPU OFFLINE`;let t=[];return e.accel_ready?t.push(`ROLL ${Number(e.roll_deg||0).toFixed(1)} PITCH ${Number(e.pitch_deg||0).toFixed(1)}`):t.push(`ACCEL OFF`),e.gyro_ready?t.push(`GYRO ${T(e.gyro_dps,1)} DPS`):t.push(`GYRO OFF`),t.join(` | `)}function je(e){if(!e.imu_ready)return e.mpu6050_addr?`MPU PRESENT | NO SAMPLE`:`IMU TELEMETRY OFFLINE`;let t=e.accel_ready?`ACCEL ${T(e.accel_g,3)} G`:`ACCEL OFF`,n=e.gyro_ready?`GYRO ${T(e.gyro_dps,1)} DPS`:`GYRO OFF`;return`ROLL ${Number(e.roll_deg||0).toFixed(1)} | PITCH ${Number(e.pitch_deg||0).toFixed(1)} | ${t} | ${n}`}function Me(e){return[`> IMU: ${Ae(e)}`,`> ACCEL G: ${T(e.accel_g,3)}`,`> GYRO DPS: ${T(e.gyro_dps,1)}`,`> IMU AGE: ${Number(e.age_ms??e.imu_age_ms??0)} ms`,`> MPU ADDR: ${e.mpu6050_addr?`0x${Number(e.mpu6050_addr).toString(16)}`:`NONE`}`]}let E=document.getElementById(`btn-imu-zero`),D=document.getElementById(`btn-imu-reset`),Ne=document.getElementById(`imu-zero-status`),O=!1;function Pe(e){Ne&&(Ne.textContent=n(e));let t=[`collecting`,`saving`].includes(e?.calibration_state);E&&(E.disabled=O||t),D&&(D.disabled=O||t)}async function Fe(n){if(!(!i.value.trim()||O)){O=!0,Pe(S);try{n?(await t(g),S=null,_(`IMU ZERO RESET | RAW`)):(_(`IMU ZERO | TORQUE OFF | HOLD STILL`),S=w(await e(g,e=>{S=w(e),Pe(e),h&&(h.textContent=je(S))})),_(`IMU ZERO / GYRO BIAS | NVS ACK`))}catch(e){_(`IMU CALIBRATION: ${e.message}`)}finally{O=!1,Pe(S)}}}E&&E.addEventListener(`click`,()=>Fe(!1)),D&&D.addEventListener(`click`,()=>Fe(!0)),setInterval(async()=>{if(!(!i.value.trim()||O||m.classList.contains(`offline`)))try{let e=await g(`/imu`,{},{cache:`no-store`,timeoutMs:900});if(!e.ok)throw Error(`IMU failed: ${e.status}`);S=w(await e.json()),Pe(S),h&&(h.textContent=je(S))}catch{}},250),setInterval(async()=>{if(!(!i.value.trim()||m.classList.contains(`offline`)))try{let e=await g(`/status`,{fast:1});if(e.ok){let t=await e.json();typeof t.flash_enabled==`boolean`&&!y&&(v=t.flash_enabled,be()),P=t,He=Date.now(),t.emergency_stop&&!N&&J(),N=!!t.emergency_stop,Ue();let n=typeof t.solar_panel_voltage_v==`number`?`${t.solar_panel_voltage_v.toFixed(2)} V`:`N/A`,i=ke(t);ue.textContent=[`> UPTIME: ${(t.uptime_ms/1e3).toFixed(1)}s`,`> MODE: ${String(t.mode||`unknown`).toUpperCase()}`,`> LINK: ${r?`DESKTOP PROXY`:`BROWSER DIRECT`}`,...Me(i),`> SOLAR: ${n}`,`> LAST CMD: ${t.last_cmd_ms_ago} ms`,`> TORQUE: ${t.torque_enabled?`ON`:`OFF`}`,`> E-STOP: ${t.emergency_stop?`ACTIVE`:`CLEAR`}`].join(`
+`),typeof t.torque_enabled==`boolean`&&t.torque_enabled!==M&&(M=t.torque_enabled,F()),h&&(h.textContent=je(i))}}catch{}},1500);let Ie=Promise.resolve(),Le=0;function k(e){let t=i.value.trim();if(!t)return Promise.resolve();(e.mode===`stand`||e.mode===`idle`)&&Le++;let n=Le;return Ie=Ie.then(async()=>{if(n!==Le||N)return;let r=await g(`/cmd`,e,{targetOverride:t,signal:AbortSignal.timeout(800),timeoutMs:800});r.ok||_(`COMMAND REJECTED: ${r.status}`)}).catch(()=>_(`COMMAND TRANSMISSION FAILED.`)),Ie}let A={},Re=[`FL`,`FR`,`BL`,`BR`];async function ze(e){try{A=await(await g(`/settings/get`,{},{targetOverride:e})).json(),A.offsets||=Array(16).fill(0),A.motorChannels||=Array.from({length:16},(e,t)=>t),Be(),_(`CALIB SYNC ACK`)}catch{_(`CALIB SYNC FAIL`)}}function Be(){fe.innerHTML=``;let e={FL:`FRONT LEFT`,FR:`FRONT RIGHT`,BL:`BACK LEFT`,BR:`BACK RIGHT`};Re.forEach(t=>{let n=1;t===`FR`?n=2:t===`BL`?n=3:t===`BR`&&(n=4);let r=A[`${t}_SET`]||n,i=document.createElement(`div`);i.className=`calib-row`,i.style.flexDirection=`column`,i.style.alignItems=`flex-start`,i.innerHTML=`
+        <div style="display:flex; justify-content:space-between; width:100%;">
+            <label style="font-weight: bold; color: var(--text-main); margin-bottom: 5px; display: block;">${e[t]}</label>
+            <div class="calib-controls">
+            <span>SET:</span>
+            <select id="set_${t}" class="set-select" data-leg="${t}">
+                <option value="1" ${r==1?`selected`:``}>SET 1 (M1,M2,M3)</option>
+                <option value="2" ${r==2?`selected`:``}>SET 2 (M4,M5,M6)</option>
+                <option value="3" ${r==3?`selected`:``}>SET 3 (M7,M8,M9)</option>
+                <option value="4" ${r==4?`selected`:``}>SET 4 (M10,M11,M12)</option>
+            </select>
+            </div>
+        </div>
+        <div id="offsets_${t}" style="width:100%; padding-left:10px; border-left:1px dashed var(--text-muted); margin-top:5px;"></div>
+      `,fe.appendChild(i),i.querySelector(`#set_${t}`).addEventListener(`change`,e=>{Ve(t,parseInt(e.target.value))}),Ve(t,r)})}function Ve(e,t){let n=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]][t-1],r=document.getElementById(`offsets_${e}`),a=e=>A.offsets[e]||0,o=e=>A.motorChannels[e]??e;r.innerHTML=``,[`HIP`,`KNEE`,`FOOT`].forEach((e,t)=>{let s=n[t],c=document.createElement(`div`);c.className=`calib-controls`,c.style.marginTop=`5px`,c.style.justifyContent=`space-between`,c.style.width=`100%`,c.innerHTML=`
+        <span style="font-size: 0.8rem">${e} (M${s+1} / CH${o(s)}):</span>
+        <div style="display:flex; gap:4px;">
+            <input type="number" step="0.5" id="off_m${s}" value="${a(s)}" style="width:60px;" data-orig="${a(s)}" />
+            <button class="btn btn-small test-btn" data-motor="${s}">TST</button>
+        </div>
+      `;let l=c.querySelector(`input`);l.addEventListener(`keydown`,e=>{if(e.key===`ArrowUp`||e.key===`ArrowDown`){e.preventDefault();let t=e.shiftKey?2:.5,n=parseFloat(l.value)||0;n+=e.key===`ArrowUp`?t:-t,n=Math.round(n*10)/10,l.value=n,A.offsets[s]=n,ne(s,n,parseFloat(l.getAttribute(`data-orig`)))}}),l.addEventListener(`change`,e=>{let t=parseFloat(e.target.value)||0;A.offsets[s]=t,ne(s,t,parseFloat(l.getAttribute(`data-orig`)))}),c.querySelector(`.test-btn`).addEventListener(`click`,()=>{i.value.trim()&&g(`/test`,{motor:s,angle:90})}),r.appendChild(c)})}pe.addEventListener(`click`,async()=>{let e=i.value.trim();if(!e)return;_(`NVS WRITE TX`),pe.innerText=`WRITING…`;let t={};Re.forEach(e=>{let n=document.getElementById(`set_${e}`).value;t[`${e}_SET`]=n});for(let e=0;e<16;e++)A.offsets[e]!==void 0&&(t[`o${e}`]=A.offsets[e]);try{let n=await g(`/settings/set`,t,{method:`POST`});pe.innerText=`WRITE NVS`,n.ok&&(_(`NVS WRITE ACK`),ze(e))}catch{pe.innerText=`WRITE NVS`,_(`NVS WRITE FAIL`)}});let j=document.getElementById(`btn-torque`),M=!1,N=!1,P=null,He=0;function Ue(){let e=!m.classList.contains(`offline`),t=e&&He&&Date.now()-He<5e3;q=!!(t&&P.torque_enabled&&!N),!q&&V!==`IDLE`&&J(),ce.hidden=!N;for(let e of[`btn-torque`,`btn-calib-torque`,`btn-stand`,`btn-sit`,`btn-charge-rest`,`btn-wave`,`btn-wag`,`btn-dance`,`btn-stretch`,`btn-play-bow`,`btn-curious`,`btn-turtle`]){let n=document.getElementById(e);n&&(n.disabled=!t||N)}document.getElementById(`robot-mode`).textContent=e?t?N?`E-STOP ACTIVE`:String(P.mode||`unknown`).replaceAll(`_`,` `).toUpperCase():`NO TELEMETRY`:`OFFLINE`,document.getElementById(`motor-status`).textContent=t?P.torque_enabled?`ON`:`OFF`:`UNKNOWN`,document.getElementById(`solar-status`).textContent=t&&typeof P.solar_panel_voltage_v==`number`?P.solar_panel_voltage_v.toFixed(2)+` V`:`—`,document.getElementById(`session-guidance`).textContent=N?`E-STOP LATCHED`:e?t?W?P.torque_enabled?`CLEAR`:`TORQUE OFF`:`CALIB / DRIVE INHIBITED`:`TELEMETRY STALE`:`LINK REQUIRED`}setInterval(Ue,1e3);function F(){let e=document.getElementById(`btn-calib-torque`);e&&(e.innerText=M?`DISABLE TORQUE`:`ENABLE TORQUE`),j&&(j.innerText=M?`DISABLE TORQUE`:`ENABLE TORQUE`,j.classList.toggle(`motors-on`,M),j.setAttribute(`aria-pressed`,String(M)))}F(),j&&j.addEventListener(`click`,async()=>{if(!i.value.trim())return;J();let e=!M;try{let t=await g(`/torque`,{state:+!!e});if(!t.ok){_(`SERVO TORQUE REJECTED: ${await t.text()||t.status}`),F();return}M=e,_(`SERVO TORQUE: ${M?`ENGAGED`:`DISABLED`}`),F()}catch{_(`TORQUE TX FAIL`),F()}}),document.getElementById(`btn-calib-torque`)?.addEventListener(`click`,()=>j.click());let I=document.getElementById(`btn-calib-mode`),L=!1;I&&I.addEventListener(`click`,async()=>{if(i.value.trim()){L=!L,_(`CALIBRATION MODE: ${L?`ON`:`OFF`}`),I.innerText=L?`EXIT CALIB`:`ENTER CALIB`,I.classList.toggle(`active-state`,L),I.setAttribute(`aria-pressed`,String(L));try{await g(`/calib`,{state:+!!L})}catch{}}});let We=document.getElementById(`btn-identify-legs`);We&&We.addEventListener(`click`,async()=>{if(i.value.trim()){_(`LEG ID TX`);try{await g(`/testseq`),_(`LEG ID ACK`)}catch{_(`LEG ID FAIL`)}}});let Ge=document.getElementById(`btn-charge-rest`);Ge&&Ge.addEventListener(`click`,async()=>{if(i.value.trim()){J(),_(`PARK TX | TUCK / TORQUE OFF`);try{let e=await g(`/charge-rest`);if(!e.ok){_(`CHARGE REST REJECTED: ${await e.text()||e.status}`);return}M=!1,F(),_(`PARK ACK | TORQUE OFF AFTER SETTLE`)}catch{_(`PARK TX FAIL`)}}});for(let[e,t]of Object.entries({"btn-turtle":`flip`,"btn-dance":`dance`,"btn-sit":`sit`,"btn-stretch":`stretch`,"btn-wag":`wag`,"btn-wave":`wave`,"btn-play-bow":`play_bow`,"btn-curious":`curious`})){let n=document.getElementById(e);n&&n.addEventListener(`click`,()=>{J(),_(`EMOTE: ${t.toUpperCase()}`),k({mode:t})})}let R=document.getElementById(`btn-capture`);R&&R.addEventListener(`click`,()=>{i.value.trim()&&(_(`CAM CAPTURE TX`),Oe())}),ae&&ae.addEventListener(`click`,()=>{i.value.trim()&&(De(!b),_(b?`STREAM START`:`STREAM STOP`))});let z={w:document.getElementById(`key-w`),a:document.getElementById(`key-a`),s:document.getElementById(`key-s`),d:document.getElementById(`key-d`)},B=document.getElementById(`slider-pace`),Ke=document.getElementById(`val-pace`);B&&B.addEventListener(`input`,e=>Ke.innerText=e.target.value);let V=`IDLE`,H=!1,U=!1,W=!0,G=document.getElementById(`input-controller`),qe=document.getElementById(`input-backup`),K=G?`controller`:`backup`,q=!G,Je=document.getElementById(`controller-status`),Ye=document.getElementById(`controller-name`),Xe=document.getElementById(`controller-dot`);function Ze(e=null){if(!Je)return;let t=e?N?`E-STOP ACTIVE`:K===`controller`?W?H?`FOCUS LOST / INHIBITED`:q?U?`NEUTRAL RESET REQUIRED`:`PAD READY`:`PAD / ROBOT INHIBITED`:`CALIB / INHIBITED`:`PAD / BYPASS`:`PAD NOT DETECTED`;Je.textContent!==t&&(Je.textContent=t);let n=e?e.id:`USB / BLUETOOTH`;Ye.textContent!==n&&(Ye.textContent=n),Xe.className=`controller-dot`+(e?U||H||N||!q?` waiting`:` ready`:``)}function Qe(e){J(),K=e,G?.classList[e===`controller`?`add`:`remove`](`active`),qe?.classList[e===`backup`?`add`:`remove`](`active`),G?.setAttribute(`aria-pressed`,String(e===`controller`)),qe?.setAttribute(`aria-pressed`,String(e===`backup`));let t=document.getElementById(`controller-controls`),n=document.getElementById(`backup-controls`);t&&(t.hidden=e!==`controller`),n&&(n.hidden=e!==`backup`)}G?.addEventListener(`click`,()=>Qe(`controller`)),qe?.addEventListener(`click`,()=>Qe(`backup`)),document.getElementById(`btn-stand`)?.addEventListener(`click`,()=>{J(),k({mode:`stand`,vx:0,vy:0,wz:0})});function J(){let e=V!==`IDLE`;Object.values(z).forEach(e=>e?.classList.remove(`active`)),V=`IDLE`,U=!0,Q={vx:0,wz:0,buttons:[]},e&&k({mode:`stand`,vx:0,vy:0,wz:0})}window.addEventListener(`blur`,()=>{H=!0,J()}),window.addEventListener(`focus`,()=>{H=document.hidden}),document.addEventListener(`visibilitychange`,()=>{H=document.hidden||!document.hasFocus(),H&&J()});async function Y(){Le++,Object.values(z).forEach(e=>e?.classList.remove(`active`)),V=`IDLE`,U=!0,Q={vx:0,wz:0,buttons:[]},M=!1,N=!0,F(),_(`E-STOP TX`);try{let e=await g(`/estop`);if(!e.ok)throw Error(`E-stop rejected: ${e.status}`);_(`E-STOP ACK | TORQUE OFF`)}catch{_(`E-STOP TX FAIL`)}}se&&se.addEventListener(`click`,Y),ce&&ce.addEventListener(`click`,async()=>{if(i.value.trim()){_(`E-STOP RESET TX`);try{let e=await g(`/estop/clear`);if(!e.ok){_(`E-STOP CLEAR REJECTED: ${await e.text()||e.status}`);return}N=!1,M=!1,F(),_(`E-STOP RESET ACK | TORQUE OFF`)}catch{_(`E-STOP RESET FAIL`)}}});function $e(e){let t=e.toLowerCase();if(H||N||!q||!W||K!==`backup`||!z[t]||V===t.toUpperCase())return;Object.values(z).forEach(e=>e.classList.remove(`active`)),z[t].classList.add(`active`),V=t.toUpperCase();let n=0,r=0;V===`W`&&(n=-1),V===`S`&&(n=1),V===`A`&&(r=1),V===`D`&&(r=-1);let i=150/parseInt(B?B.value:150);k({mode:`walk`,vx:n,vy:0,wz:r,speed:i.toFixed(2)})}function et(e=null){let t=e?e.toLowerCase():null;t&&z[t]&&z[t].classList.remove(`active`);let n=Object.keys(z).find(e=>z[e].classList.contains(`active`));if(n){$e(n);return}V=`IDLE`,k({mode:`stand`})}Object.entries(z).forEach(([e,t])=>{t&&(t.addEventListener(`pointerdown`,n=>{n.preventDefault(),t.setPointerCapture(n.pointerId),$e(e)}),t.addEventListener(`pointerup`,t=>{t.preventDefault(),et(e)}),t.addEventListener(`pointercancel`,()=>et(e)),t.addEventListener(`lostpointercapture`,()=>{t.classList.contains(`active`)&&et(e)}))}),document.addEventListener(`keydown`,e=>{let t=document.activeElement,n=t&&[`INPUT`,`SELECT`,`TEXTAREA`].includes(t.tagName),r=e.key.toLowerCase();if(!H&&!(e.repeat&&z[r]&&!z[r].classList.contains(`active`))){if(e.key===`Escape`||e.key===` `&&!n){e.preventDefault(),Y();return}n||!q||!W||K!==`backup`||e.repeat||(z[r]&&e.preventDefault(),r===`f`&&k({mode:`flip`}),r===`e`&&k({mode:`dance`}),r===`c`&&k({mode:`sit`}),r===`x`&&k({mode:`stretch`}),r===`z`&&k({mode:`wag`}),r===`v`&&k({mode:`wave`}),r===`q`&&R&&R.click(),z[r]&&$e(r))}}),document.addEventListener(`keyup`,e=>{let t=e.key.toLowerCase();z[t]?.classList.contains(`active`)&&et(t)});let X=!1,tt=!1,Z=null,Q={vx:0,wz:0,buttons:[]};window.addEventListener(`gamepadconnected`,e=>{_(`GAMEPAD CONNECTED: ${e.gamepad.id}`),X=!0,U=!0,tt||(tt=!0,requestAnimationFrame($))}),window.addEventListener(`gamepaddisconnected`,e=>{_(`GAMEPAD DISCONNECTED: ${e.gamepad.id}`),!(Z!==null&&(e.gamepad.index??0)!==Z)&&(X=!1,Z=null,J())});function $(){let e=Array.from(navigator.getGamepads?.()||[]).map((e,t)=>({pad:e,index:e?.index??t})).filter(({pad:e})=>e&&e.connected!==!1),t=e.find(({index:e})=>e===Z)||e.find(({pad:e})=>/DualSense|054c.*0ce6/i.test(e.id))||e[0],n=t?.pad;if(!n){(X||Z!==null)&&J(),X=!1,Z=null,requestAnimationFrame($);return}if((!X||Z!==t.index)&&(J(),X=!0,Z=t.index,_(`GAMEPAD ${n.id} | NEUTRAL RESET REQUIRED`)),Ze(n),n.buttons[7]?.pressed&&!N){Y(),requestAnimationFrame($);return}if(H||N||!q||!W||K!==`controller`){U=!0,requestAnimationFrame($);return}if(n){let e=.15,t=0,r=0;Math.abs(n.axes[1])>e&&(t=Math.sign(n.axes[1])),Math.abs(n.axes[2])>e?r=-Math.sign(n.axes[2]):Math.abs(n.axes[0])>e&&(r=-Math.sign(n.axes[0]));let i=n.buttons.map(e=>e.pressed);if(U){t===0&&r===0&&!i.some(Boolean)&&(U=!1),requestAnimationFrame($);return}if(Math.abs(t)>0||Math.abs(r)>0){let e=150/parseInt(B?B.value:150);(Math.abs(Q.vx-t)>.1||Math.abs(Q.wz-r)>.1||V===`IDLE`)&&(V=`GAMEPAD`,k({mode:`walk`,vx:t.toFixed(2),vy:0,wz:r.toFixed(2),speed:e.toFixed(2)}),Q.vx=t,Q.wz=r)}else V===`GAMEPAD`&&(V=`IDLE`,k({mode:`stand`}),Q.vx=0,Q.wz=0);let a=e=>i[e]&&!Q.buttons[e];[0,1,2,3,4,5].some(a)&&J(),a(0)&&k({mode:`sit`}),a(1)&&k({mode:`stand`}),a(2)&&k({mode:`wave`}),a(3)&&k({mode:`dance`}),a(4)&&k({mode:`stretch`}),a(5)&&k({mode:`wag`}),a(7)&&Y(),a(9)&&R&&R.click(),Q.buttons=i}requestAnimationFrame($)}tt||(tt=!0,requestAnimationFrame($)),setInterval(()=>{V!==`IDLE`&&i.value.trim()&&g(`/ping`).catch(()=>{})},500);let nt=null;function rt(){clearTimeout(nt),nt=setTimeout(()=>{q&&V===`IDLE`&&!L&&k({mode:`idle`})},3e3)}document.addEventListener(`keydown`,rt),document.addEventListener(`click`,rt),rt(),Ue()});
+</script>
+  <style>
+:root{--bg:#0b0e12;--surface:#13181e;--surface-strong:#1b222b;--border:#2b333e;--border-strong:#414d5c;--text:#e6ebf2;--muted:#9aa7b6;--faint:#718094;--cyan:#91bbd8;--green:#80b69b;--amber:#dcb579;--red:#ee8e8a;--font:"Segoe UI",system-ui,sans-serif;--mono:"Cascadia Code",Consolas,monospace;--accent-amber:var(--amber);--accent-red:var(--red);--text-main:var(--text);--bg-color:var(--bg)}*{box-sizing:border-box}body{background:var(--bg);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased;margin:0;font-size:14px}button,input,select{font:inherit}button,summary{cursor:pointer}button{touch-action:manipulation}button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:4px}button:disabled{opacity:.4;cursor:not-allowed}[hidden]{display:none!important}.app-container{max-width:1580px;margin:auto;padding:16px 24px}.top-bar{z-index:10;background:var(--bg);justify-content:space-between;align-items:center;gap:24px;padding:12px 0;display:flex;position:sticky;top:0}.branding{align-items:center;gap:14px;display:flex}.brand-mark{background:var(--cyan);color:#0c131b;border-radius:4px;place-items:center;width:48px;height:48px;font-size:24px;display:grid}.branding h1{letter-spacing:2px;margin:0;font-size:24px;font-weight:750}.branding h1 span{letter-spacing:0;color:var(--muted);margin-left:8px;font-size:14px;font-weight:400}.branding p{color:var(--muted);margin:5px 0 0;font-size:12px}.header-actions{align-items:center;gap:16px;display:flex}.status-indicator{overflow-wrap:anywhere;align-items:center;gap:8px;max-width:260px;font-size:12px;display:flex}.block,.controller-dot{background:var(--green);border-radius:50%;flex-shrink:0;width:7px;height:7px}.block.offline,.controller-dot{background:var(--faint)}.workspace-bar{border-bottom:1px solid var(--border);justify-content:space-between;align-items:center;margin:16px 0 14px;display:flex}.tab-nav{gap:28px;display:flex}.nav-btn{color:var(--muted);background:0 0;border:none;border-bottom:2px solid #0000;padding:0 3px 12px;font-weight:600}.nav-btn.active{color:var(--cyan);border-bottom-color:var(--cyan)}.workspace-note{color:var(--muted);padding-bottom:12px;font-size:12px}.session-strip{border:1px solid var(--border);background:#11171e;border-radius:5px;align-items:center;gap:26px;margin-bottom:20px;padding:16px 20px;display:flex}.session-strip>div{gap:5px;min-width:94px;display:grid}.section-kicker{color:var(--muted);text-transform:uppercase;letter-spacing:1.4px;font-size:10px;font-weight:650}.session-strip strong{font-size:13px;font-weight:550}.session-next{border-left:1px solid var(--border);flex:1;padding-left:24px}.session-next strong{color:var(--cyan)}.dashboard-grid{grid-template-columns:minmax(0,1fr) 408px;align-items:start;gap:20px;display:grid}.vision-column,.control-column{flex-direction:column;gap:16px;min-width:0;display:flex}.glass-panel{background:var(--surface);border:1px solid var(--border);border-radius:6px;min-width:0;overflow:hidden}.panel-header{justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;display:flex}.panel-header h2,.link-heading h2{letter-spacing:-.3px;margin:4px 0 0;font-size:18px;font-weight:600}.feed-status,.small-tag{font-family:var(--mono);color:var(--muted);border:1px solid var(--border);white-space:nowrap;background:#1b232e;border-radius:5px;padding:6px 8px;font-size:10px}.feed-status.blink{color:var(--cyan)}.camera-container{aspect-ratio:16/10;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:#080b0f;justify-content:center;align-items:center;width:100%;min-height:280px;max-height:430px;display:flex;position:relative;overflow:hidden}.cam-feed{object-fit:contain;opacity:0;width:100%;height:100%}.cam-feed.has-frame{opacity:1}.camera-placeholder{text-align:center;flex-direction:column;justify-content:center;align-items:center;padding:20px;display:flex;position:absolute;inset:0}.camera-placeholder.hidden{display:none}.camera-empty-icon{color:#657486;margin-bottom:12px;font-size:48px}.camera-placeholder h3{letter-spacing:-.6px;margin:0 0 10px;font-size:24px;font-weight:500}.camera-placeholder p{color:var(--muted);margin:0;font-size:13px;line-height:1.8}.cam-overlay{pointer-events:none;position:absolute;inset:0}.crosshair-tactical{opacity:.3;width:24px;height:24px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}.camera-container:has(.camera-placeholder:not(.hidden)) .crosshair-tactical{display:none}.hline,.vline{background:var(--cyan);position:absolute}.hline{width:24px;height:1px;top:12px}.vline{width:1px;height:24px;left:12px}.cam-data{font-family:var(--mono);color:var(--muted);text-shadow:0 1px 3px #000;justify-content:space-between;gap:12px;font-size:10px;display:flex;position:absolute;bottom:18px;left:20px;right:20px}.camera-toolbar{justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;display:flex}.camera-toolbar>span{color:var(--muted);font-size:11px}.camera-toolbar>div{gap:7px;display:flex}.btn{border:1px solid var(--border-strong);color:var(--text);background:#1d2530;border-radius:3px;min-height:38px;padding:10px 13px;font-size:12px;font-weight:550;line-height:1.3;transition:background .15s,border-color .15s}.btn:hover{background:#293443;border-color:#738ba5}.btn:active{transform:translateY(1px)}.btn-primary,.btn.active-state{background:var(--cyan);border-color:var(--cyan);color:#0b151f}.btn-primary:hover,.btn.active-state:hover{background:#aecde3}.btn-estop{color:#f5d4d4;background:#382022;border-color:#8d4b4e;align-items:center;gap:12px;display:flex}.btn-estop:hover{border-color:var(--red);background:#512729}.btn-danger-outline{color:#eda5a4;background:0 0;border-color:#754247}.btn-warning{color:var(--amber)}kbd{font:10px var(--mono);color:var(--muted);border:1px solid var(--border-strong);white-space:nowrap;background:#131b25;border-radius:4px;padding:3px 5px}.btn-estop kbd{color:#f5d4d4;background:#2b171b;border-color:#7d4248}.robot-link{grid-template-columns:1fr 1fr;align-items:center;gap:14px 20px;padding:18px 20px;display:grid}.link-heading{align-items:center;gap:13px;display:flex}.link-heading h2{margin-top:0;font-size:15px}.link-heading p{color:var(--muted);margin:5px 0 0;font-size:11px}.step-number{font:13px var(--mono);color:var(--cyan);border:1px solid var(--border-strong);border-radius:3px;flex-shrink:0;place-items:center;width:30px;height:30px;display:grid}.connection-config label,.access-details label{color:var(--muted);margin-bottom:6px;font-size:11px;display:block}.input-group{gap:8px;display:flex}input[type=text],input[type=password],input[type=number],select{border:1px solid var(--border-strong);width:100%;min-width:0;color:var(--text);background:#0c1118;border-radius:3px;padding:9px 11px;font-size:12px}input[type=text]{font-family:var(--mono)}.access-details{color:var(--muted);grid-column:2;font-size:11px}.access-details label{margin-top:10px}.access-details input{margin-top:5px}.diagnostics summary{color:var(--muted);justify-content:space-between;padding:15px 20px;font-size:12px;display:flex}.diagnostics summary span{font:10px var(--mono);color:var(--faint)}.diagnostic-tools{padding:0 20px 10px}.terminal-grid{grid-template-columns:1fr 1fr;gap:12px;padding:0 20px 20px;display:grid}.terminal-box{border:1px solid var(--border);max-height:220px;font:11px/1.7 var(--mono);color:var(--muted);white-space:pre-line;background:#0c1117;border-radius:3px;margin:0;padding:10px;overflow:auto}.telemetry-box{color:var(--cyan)}.input-switch{border:1px solid var(--border);background:#0c1118;border-radius:4px;gap:4px;margin:0 20px 16px;padding:4px;display:flex}.input-mode{color:var(--muted);background:0 0;border:none;border-radius:5px;flex:1;padding:10px 4px;font-size:12px}.controller-state{align-items:baseline;gap:10px;margin:0 20px;display:flex}.controller-state strong{font-size:12px;font-weight:600}.controller-state p{color:var(--muted);overflow-wrap:anywhere;margin:5px 0;font-size:11px;line-height:1.5}.controller-dot.waiting{background:var(--amber)}.stick-legend{color:var(--muted);justify-content:space-between;gap:12px;margin:0 20px 16px;font-size:10px;display:flex}.stick-legend span{gap:4px;display:grid}.stick-legend b{color:var(--cyan);font-size:12px;font-weight:550}.mapping-grid{grid-template-columns:1fr 1fr;gap:11px 10px;margin:0 20px;display:grid}.mapping-grid>span{color:var(--muted);align-items:center;gap:8px;font-size:11px;display:flex}.mapping-grid kbd{text-align:center;min-width:52px;font-size:9px}.mapping-grid .mapping-stop{color:#eda5a4}.mapping-stop kbd{color:#eda5a4;border-color:#754247}.input-hint{color:var(--muted);margin:16px 20px;font-size:11px;line-height:1.65}.pace-control{border-top:1px solid var(--border);padding:16px 20px}.pace-control label{justify-content:space-between;font-size:12px;font-weight:550;display:flex}.pace-control label>span{font:10px var(--mono);color:var(--muted)}input[type=range]{width:100%;accent-color:var(--cyan);margin:14px 0 7px}.range-labels{color:var(--faint);justify-content:space-between;font-size:10px;display:flex}.posture-actions{grid-template-columns:1fr 1fr;gap:8px;padding:0 20px;display:grid}.posture-actions #btn-stand{grid-column:1/-1}.expressions{border-top:1px solid var(--border)}.expressions summary{color:var(--muted);padding:14px 20px;font-size:12px}.action-grid{grid-template-columns:1fr 1fr;gap:8px;display:grid}.expressions .action-grid{padding:0 20px 18px}.backup-heading{margin:0 20px 16px}.backup-heading h3{margin:0 0 6px;font-size:15px;font-weight:550}.backup-heading p{color:var(--muted);margin:0;font-size:12px;line-height:1.6}.wasd-cluster{justify-items:center;gap:8px;margin:20px;display:grid}.wasd-row{gap:8px;display:flex}.wasd-key{border:1px solid var(--border-strong);width:70px;height:65px;color:var(--cyan);touch-action:none;-webkit-user-select:none;user-select:none;background:#192430;border-radius:4px;justify-content:center;align-items:center;gap:8px;display:flex}.wasd-key span{font-size:24px}.wasd-key.active,.wasd-key:hover{border-color:var(--cyan);background:#263e55}.bottom-bar{color:var(--faint);justify-content:space-between;padding:20px 2px 0;font-size:11px;display:flex}.bottom-bar p{margin:0}.bottom-bar span{margin-left:8px}#view-calib{display:none}.full-panel{width:100%}.panel-content{flex-direction:column;gap:16px;padding:20px;display:flex}.control-group{border:1px solid var(--border);border-radius:4px;padding:16px}.group-title{font-size:13px;font-weight:600}.control-group p{color:var(--muted);font-size:12px;line-height:1.6}.calib-toolbar{flex-wrap:wrap;gap:10px;display:flex}.instruction-strip{color:var(--amber);background:#252322;border:1px solid #5c5142;border-radius:4px;padding:13px;font-size:12px}.keyboard-chip{font-family:var(--mono)}.calib-scroll{flex-direction:column;gap:10px;display:flex}.calib-row{border:1px solid var(--border);background:#171f29;border-radius:4px;flex-direction:column;gap:10px;padding:16px;display:flex}.calib-controls{align-items:center;gap:8px;display:flex}.warning-text{color:var(--amber)}.btn-small,.test-btn{padding:8px}.panel-note{color:var(--muted);font-size:11px}@media (width>=1400px){.camera-container{aspect-ratio:16/9}.dashboard-grid{grid-template-columns:minmax(0,1fr) 440px}.mapping-grid{gap:13px 10px}.pilot-panel .input-hint{margin-top:20px;margin-bottom:20px}}@media (width<=1100px){.app-container{padding:20px}.dashboard-grid{grid-template-columns:minmax(0,1fr) 360px;gap:16px}.camera-toolbar{flex-wrap:wrap}.robot-link{grid-template-columns:1fr}.access-details{grid-column:auto}.session-strip{gap:18px}.session-next{padding-left:18px}.branding h1 span{display:none}.mapping-grid{gap:10px 6px;margin:0 16px}.mapping-grid>span{gap:5px;font-size:10px}.mapping-grid kbd{min-width:47px;font-size:8px}}@media (width<=800px){.app-container{padding:14px}.top-bar{flex-wrap:wrap;gap:16px}.header-actions{justify-content:space-between;width:100%}.workspace-bar{margin-top:20px}.workspace-note{text-align:right;max-width:180px;font-size:10px}.session-strip{grid-template-columns:repeat(3,1fr);gap:16px;padding:14px;display:grid}.session-strip>div{min-width:0}.session-next{border-left:0;border-top:1px solid var(--border);grid-column:1/-1;padding:14px 0 0}.session-strip>.btn{grid-column:1/-1}.dashboard-grid{grid-template-columns:1fr}.control-column{grid-row:1}.vision-column{grid-row:2}.mapping-grid>span{font-size:12px}.mapping-grid kbd{min-width:60px;font-size:10px}.robot-link{grid-template-columns:1fr 1fr}.access-details{grid-column:2}.camera-container{min-height:260px}.session-strip strong{font-size:12px}.terminal-grid{grid-template-columns:1fr}}@media (width<=480px){.robot-link{grid-template-columns:1fr}.access-details{grid-column:auto}.brand-mark{width:40px;height:40px;font-size:32px}.branding h1{font-size:21px}.branding p{font-size:10px}.header-actions{gap:8px}.btn-estop{gap:8px;padding:10px;font-size:11px}.status-indicator{max-width:140px;font-size:10px}.camera-toolbar>div{grid-template-columns:repeat(3,1fr);width:100%;display:grid}.camera-toolbar .btn{padding:8px;font-size:10px}.diagnostics summary span{display:none}.calib-controls{flex-wrap:wrap}.panel-header{padding:16px}.bottom-bar,.mapping-grid>span{font-size:10px}.mapping-grid kbd{min-width:54px;font-size:9px}}@media (prefers-reduced-motion:reduce){*{transition:none!important}}@media (width<=800px){.vision-column{display:contents}.robot-link{grid-row:1}.control-column{grid-row:2}.main-view{grid-row:3}.diagnostics{grid-row:4}}.stick-legend{margin-top:22px}.mapping-grid kbd.ps-glyph{padding:3px 8px;font-family:Segoe UI Symbol,system-ui,sans-serif;font-size:20px;line-height:1}.brand-mark{font-family:var(--mono);background:var(--surface-strong);border:1px solid var(--border-strong);color:var(--cyan);font-weight:700}.branding h1{font-family:var(--mono);font-size:22px;font-weight:650}.branding h1 span{font-family:var(--mono);letter-spacing:1px;font-size:11px}.branding p{font-family:var(--mono);letter-spacing:1.4px;font-size:10px}.top-bar{border-bottom:1px solid var(--border)}.nav-btn{font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;font-size:11px}.panel-header{border-bottom:1px solid var(--border);background:#151c24;margin-bottom:16px}.main-view .panel-header{margin-bottom:0}.panel-header h2{font-family:var(--mono);letter-spacing:.2px;font-size:14px;font-weight:550}.section-kicker{font-family:var(--mono);letter-spacing:1.2px;font-size:9px}.session-strip strong{font-family:var(--mono);font-size:12px}.session-next strong{color:var(--text);font-family:var(--font)}.status-indicator,.btn{font-family:var(--mono);font-size:11px}.btn-primary,.btn.active-state{color:#c2dcee;background:#22384b;border-color:#587d9c}.btn-primary:hover,.btn.active-state:hover{border-color:var(--cyan);background:#304b62}.controller-dot.ready{background:var(--green)}.input-switch{gap:3px;padding:3px}.input-mode{font-family:var(--mono);font-size:11px}.input-mode.active{color:#c2dcee;box-shadow:none;background:#223044}.stick-legend{border-bottom:1px solid var(--border);padding-bottom:14px}.stick-legend b{color:var(--text);font-family:var(--mono);font-size:11px}.mapping-grid{gap:10px}.mapping-grid>span{color:#b6c0cd}.mapping-grid kbd{color:#bacadb;background:#18222f;border-color:#394858}.mapping-grid .mapping-stop kbd{color:var(--red);border-color:#754247}.camera-empty-icon{border:1px solid var(--border);border-radius:3px;place-items:center;width:54px;height:54px;font-size:28px;display:grid}.camera-placeholder h3{font-family:var(--mono);letter-spacing:.3px;font-size:17px}.camera-placeholder p{font-size:12px;line-height:1.8}.camera-toolbar{background:#11171e}.terminal-box{border-radius:3px}.diagnostics summary,.expressions summary{font-family:var(--mono);font-size:11px}.bottom-bar{font-family:var(--mono);letter-spacing:.2px;font-size:10px}@media (width<=480px){.brand-mark{font-size:22px}.branding h1{font-size:20px}.branding p{letter-spacing:.8px;font-size:9px}.status-indicator{font-size:10px}.session-strip strong{font-size:11px}.camera-toolbar .btn{font-size:9px}}.btn.motors-on{border-color:var(--amber);color:var(--amber);background:#28231b}.btn,.input-mode,.mapping-grid,.stick-legend,.range-labels,.expressions summary{text-transform:uppercase}.workspace-note,.controller-state strong,.controller-state p,.input-hint,.backup-heading p,.camera-placeholder p,.session-next strong,.link-heading h2,.connection-config label,.access-details,.access-details label,.panel-note,.instruction-strip,.control-group p{font-family:var(--mono)}.session-next strong,.link-heading h2{font-size:12px}.link-heading{gap:10px}.robot-link{padding:14px 18px}.controller-state p{font-size:10px}.input-hint{margin:12px 20px;font-size:10px;line-height:1.5}.backup-heading p{font-size:10px}.camera-placeholder h3{letter-spacing:2px;margin-bottom:8px;font-size:16px}.camera-placeholder p{letter-spacing:1px;font-size:10px}.instruction-strip,.control-group p{font-size:11px}@media (width<=480px){.input-hint{font-size:9px}.session-next strong{font-size:11px}}
+
+</style>
+</head>
+<body>
+<div class="app-container">
+<header class="top-bar">
+<div class="branding">
+<span class="brand-mark" aria-hidden="true">S</span>
+<div>
+<h1>SOLAR<span> / QUADRUPED CONSOLE</span>
+</h1>
+
+</div>
+</div>
+<div class="header-actions">
+<div class="status-indicator">
+<span class="block offline">
+</span>
+<span class="target-ip-text">LINK OFFLINE</span>
+</div>
+<button class="btn btn-estop" id="btn-estop" aria-label="Emergency stop">■ E-STOP <kbd>Esc</kbd>
+</button>
+</div>
+</header>
+<div class="workspace-bar">
+<nav class="tab-nav" aria-label="Workspace">
+<button class="nav-btn active" data-target="view-tactical" aria-pressed="true">Drive</button>
+<button class="nav-btn" data-target="view-calib" aria-pressed="false">Calibration</button>
+</nav>
+<span class="workspace-note">MANUAL INPUT</span>
+</div>
+<section class="session-strip" aria-label="Robot state">
+<div>
+<span class="section-kicker">MODE</span>
+<strong id="robot-mode">OFFLINE</strong>
+</div>
+<div>
+<span class="section-kicker">TORQUE</span>
+<strong id="motor-status">UNKNOWN</strong>
+</div>
+<div>
+<span class="section-kicker">SOLAR</span>
+<strong id="solar-status">—</strong>
+</div>
+<div class="session-next">
+<span class="section-kicker">INTERLOCK</span>
+<strong id="session-guidance" role="status">LINK REQUIRED</strong>
+</div>
+<button class="btn btn-primary" id="btn-torque">ENABLE TORQUE</button>
+<button class="btn btn-danger-outline" id="btn-clear-estop">RESET E-STOP</button>
+</section>
+<main class="dashboard-grid" id="view-tactical">
+<div class="vision-column">
+<section class="glass-panel robot-link">
+<div class="link-heading">
+<span class="step-number">NET</span>
+<div>
+<h2>LINK</h2>
+
+</div>
+</div>
+<div class="connection-config">
+<label for="ip-input">TARGET</label>
+<div class="input-group">
+<input type="text" id="ip-input" value="solar.local" autocomplete="url" inputmode="url" />
+<button id="apply-ip" class="btn btn-primary">CONNECT</button>
+</div>
+</div>
+<details class="access-details">
+<summary>AUTH</summary>
+<label for="token-input">API TOKEN</label>
+<input type="password" id="token-input" autocomplete="current-password" placeholder="Optional" />
+</details>
+</section>
+<section class="glass-panel main-view">
+<div class="panel-header">
+<div>
+<span class="section-kicker">01 / VISION</span>
+<h2>CAMERA</h2>
+</div>
+<span class="feed-status" id="feed-status">FRAME IDLE</span>
+</div>
+<div class="camera-container">
+<img id="cam-stream" src="" alt="Robot camera frame" class="cam-feed" />
+<div class="camera-placeholder" id="camera-placeholder">
+
+<h3>NO FRAME</h3>
+<p>JPEG / RX IDLE</p>
+</div>
+<div class="cam-overlay">
+<div class="crosshair-tactical">
+<div class="hline">
+</div>
+<div class="vline">
+</div>
+</div>
+<div class="cam-data">
+<span id="coord-hud">IMU NO DATA</span>
+<span>ROBOT POV</span>
+</div>
+</div>
+</div>
+<div class="camera-toolbar">
+<span>JPEG</span>
+<div>
+<button class="btn" id="btn-flash" aria-pressed="false">FLASH OFF</button>
+<button class="btn" id="btn-capture">CAPTURE <kbd>Q</kbd>
+</button>
+<button class="btn btn-primary" id="btn-live-feed">STREAM</button>
+</div>
+</div>
+</section>
+<details class="glass-panel diagnostics">
+<summary>TELEMETRY / LOG <span id="proxy-mode-text">DIRECT</span>
+</summary>
+<div class="diagnostic-tools">
+<button class="btn" id="btn-ping">PING</button>
+</div>
+<div class="terminal-grid">
+<pre class="terminal-box telemetry-box" id="telemetry-out">NO TELEMETRY</pre>
+<div class="terminal-box" id="terminal-out">LINK IDLE</div>
+</div>
+</details>
+</div>
+<aside class="control-column">
+<section class="glass-panel pilot-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">02 / INPUT CONTROL</span>
+<h2>DRIVE</h2>
+</div>
+<span class="small-tag">HOLD TO MOVE</span>
+</div>
+<div class="input-switch" role="group" aria-label="Driving input">
+<button class="input-mode active" id="input-controller" aria-pressed="true">GAMEPAD</button>
+<button class="input-mode" id="input-backup" aria-pressed="false">WASD / TOUCH</button>
+</div>
+<div id="controller-controls">
+<div class="controller-state">
+<span class="controller-dot" id="controller-dot">
+</span>
+<div>
+<strong id="controller-status" role="status">PAD NOT DETECTED</strong>
+<p id="controller-name">USB / BLUETOOTH</p>
+</div>
+</div>
+<div class="stick-legend">
+<span>
+<b>L-STICK</b> FORWARD / REVERSE</span>
+<span>
+<b>R-STICK</b> YAW</span>
+</div>
+<div class="mapping-grid">
+<span>
+<kbd class="ps-glyph" aria-label="Cross">×</kbd> Sit</span>
+<span>
+<kbd class="ps-glyph" aria-label="Circle">○</kbd> Stand</span>
+<span>
+<kbd class="ps-glyph" aria-label="Square">□</kbd> Wave</span>
+<span>
+<kbd class="ps-glyph" aria-label="Triangle">△</kbd> Dance</span>
+<span>
+<kbd>L1</kbd> Stretch</span>
+<span>
+<kbd>R1</kbd> Wag</span>
+<span>
+<kbd>Options</kbd> Capture</span>
+<span class="mapping-stop">
+<kbd>R2</kbd> E-STOP</span>
+</div>
+<p class="input-hint">NEUTRAL → STOP · RECONNECT → NEUTRAL RESET</p>
+</div>
+<div id="backup-controls" hidden>
+<div class="backup-heading">
+<h3>WASD / TOUCH</h3>
+<p>HOLD → DRIVE · RELEASE → STOP</p>
+</div>
+<div class="wasd-cluster">
+<button class="wasd-key" id="key-w" aria-label="Walk forward, W">
+<span>↑</span>
+<kbd>W</kbd>
+</button>
+<div class="wasd-row">
+<button class="wasd-key" id="key-a" aria-label="Turn left, A">
+<span>↶</span>
+<kbd>A</kbd>
+</button>
+<button class="wasd-key" id="key-s" aria-label="Walk backward, S">
+<span>↓</span>
+<kbd>S</kbd>
+</button>
+<button class="wasd-key" id="key-d" aria-label="Turn right, D">
+<span>↷</span>
+<kbd>D</kbd>
+</button>
+</div>
+</div>
+<p class="input-hint">ESC / SPACE → E-STOP · Q → CAPTURE</p>
+</div>
+<div class="pace-control">
+<label for="slider-pace">PACE <span>
+<span id="val-pace">150</span> ms</span>
+</label>
+<input type="range" id="slider-pace" min="10" max="500" value="150" step="10" />
+<div class="range-labels">
+<span>Faster</span>
+<span>Slower</span>
+</div>
+</div>
+</section>
+<section class="glass-panel posture-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">03 / ROBOT ACTIONS</span>
+<h2>POSTURE</h2>
+</div>
+</div>
+<div class="posture-actions">
+
+<button class="btn" id="btn-stand">STAND / STOP</button>
+<button class="btn" id="btn-sit">Sit</button>
+<button class="btn" id="btn-charge-rest">PARK</button>
+</div>
+<p class="input-hint">PARK → TUCK → TORQUE OFF</p>
+<details class="expressions">
+<summary>EMOTES</summary>
+<div class="action-grid">
+<button class="btn" id="btn-wave">Wave</button>
+<button class="btn" id="btn-wag">Wag</button>
+<button class="btn" id="btn-dance">Dance</button>
+<button class="btn" id="btn-stretch">Stretch</button>
+<button class="btn" id="btn-play-bow">Play bow</button>
+<button class="btn" id="btn-curious">Curious</button>
+<button class="btn btn-warning" id="btn-turtle">Flip / recover</button>
+</div>
+</details>
+</section>
+</aside>
+</main>
+<main class="dashboard-grid dashboard-grid--single" id="view-calib">
+<section class="tactical-panel full-panel glass-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">Robot setup</span>
+<h2>CALIBRATION</h2>
+</div>
+<div class="panel-note">DRIVE INHIBITED</div>
+</div>
+<div class="panel-content calib-content">
+<div class="drive-card control-group">
+<div class="group-title">IMU zero</div>
+<p>TORQUE OFF · LEVEL POSE · HOLD STILL 2 s</p>
+<div class="action-grid">
+<button class="btn btn-secondary" id="btn-imu-zero">Zero IMU</button>
+<button class="btn btn-neutral" id="btn-imu-reset">Reset IMU Zero</button>
+</div>
+<p id="imu-zero-status" role="status">IMU NO DATA</p>
+</div>
+<div class="calib-toolbar">
+<button class="btn btn-danger-outline" id="btn-calib-mode">ENTER CALIB</button>
+<button class="btn btn-warning" id="btn-calib-torque">ENABLE TORQUE</button>
+<button class="btn btn-warning" id="btn-identify-legs">IDENTIFY LEGS</button>
+</div>
+<div class="instruction-strip">
+              OFFSET ± <span class="keyboard-chip">↑ / ↓</span> · SHIFT = 2° · WRITE NVS = PERSIST
+            </div>
+<div class="calib-scroll" id="calib-container">
+<div class="warning-text">LINK REQUIRED</div>
+</div>
+<button class="btn btn-primary" id="btn-save-calib">WRITE NVS</button>
+</div>
+</section>
+</main>
+<footer class="bottom-bar">
+<p>SOLAR <span>·</span> LOCAL OPERATOR CONSOLE</p>
+<p>TIME <span id="sys-time">00:00:00</span>
+</p>
+</footer>
+</div>
+</body>
+</html>

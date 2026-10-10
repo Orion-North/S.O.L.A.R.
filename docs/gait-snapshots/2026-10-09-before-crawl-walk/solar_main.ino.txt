@@ -1,14 +1,13 @@
 #include <WiFi.h>
-#include <esp_wpa2.h>
-#include <time.h>
 #include <WebServer.h>
+#include <ArduinoOTA.h>
 #include <Wire.h>
 #include "imu_bus.h"
 #include "imu_calibration.h"
+#include "walking_gait.h"
 #include <Adafruit_PWMServoDriver.h>
 #include "esp_camera.h"
-#include "camera_transfer.h"
-#include "debug_log.h"
+#include <esp_http_server.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include <Preferences.h>
@@ -25,24 +24,6 @@
 #endif
 #ifndef SOLAR_HOME_PASSWORD
 #define SOLAR_HOME_PASSWORD ""
-#endif
-#ifndef SOLAR_SECONDARY_SSID
-#define SOLAR_SECONDARY_SSID ""
-#endif
-#ifndef SOLAR_SECONDARY_PASSWORD
-#define SOLAR_SECONDARY_PASSWORD ""
-#endif
-#ifndef SOLAR_SECONDARY_ENTERPRISE
-#define SOLAR_SECONDARY_ENTERPRISE 0
-#endif
-#ifndef SOLAR_SECONDARY_USERNAME
-#define SOLAR_SECONDARY_USERNAME ""
-#endif
-#ifndef SOLAR_SECONDARY_IDENTITY
-#define SOLAR_SECONDARY_IDENTITY SOLAR_SECONDARY_USERNAME
-#endif
-#ifndef SOLAR_SECONDARY_CA_PEM
-#define SOLAR_SECONDARY_CA_PEM ""
 #endif
 #ifndef SOLAR_FALLBACK_SSID
 #define SOLAR_FALLBACK_SSID "SOLAR_AP"
@@ -92,9 +73,6 @@
 
 const char* homeSsid = SOLAR_HOME_SSID;
 const char* homePassword = SOLAR_HOME_PASSWORD;
-const char* secondarySsid = SOLAR_SECONDARY_SSID;
-const char* secondaryPassword = SOLAR_SECONDARY_PASSWORD;
-const char* selectedWifiProfile = "none";
 const char* fallbackSsid = SOLAR_FALLBACK_SSID;
 const char* fallbackPassword = SOLAR_FALLBACK_PASSWORD;
 const char* otaUser = SOLAR_OTA_USER;
@@ -102,8 +80,7 @@ const char* otaPassword = SOLAR_OTA_PASSWORD;
 const char* apiToken = SOLAR_API_TOKEN;
 const char* AUTH_HEADER_KEYS[] = {"x-solar-token"};
 
-SolarWebServer server(80);
-CameraTransfer cameraTransfer;
+WebServer server(80);
 SemaphoreHandle_t stateMutex = NULL;
 SemaphoreHandle_t i2cMutex = NULL;
 SemaphoreHandle_t imuI2cMutex = NULL;
@@ -139,8 +116,8 @@ float offsets[16] = {
 float currentAngle[16];
 float targetAngle[16];
 
-const char* FIRMWARE_VERSION = "rl-solar-web-ota-bounded-log-2026-10-10";
-DebugLog sysDebug;
+const char* FIRMWARE_VERSION = "rl-solar-fast-walk-2026-10-09";
+String sysDebug = String("OS Boot OK\nFW: ") + FIRMWARE_VERSION + "\n";
 
 // --- MPU-6050 IMU (accelerometer + gyroscope) ---
 const uint8_t MPU6050_ADDR_PRIMARY = 0x68;
@@ -266,8 +243,8 @@ int motorToPwmChannel(int motorId) {
 
 const int STATUS_LED_PIN = 33; // AI-Thinker small onboard red LED, active-low
 const bool STATUS_LED_ACTIVE_LOW = true;
-const int FRONT_FLASH_PIN = 4; // AI-Thinker front white flash LED, active-high
-bool frontFlashEnabled = false;
+bool statusLedOverride = false;
+bool statusLedOverrideState = false;
 
 // --- MOTION STATE VARIABLES ---
 float cmd_vx = 0.0;
@@ -310,7 +287,7 @@ int lastServoPulse[16];
 bool otaUploadOk = false;
 String otaUploadMessage = "No OTA upload started";
 
-void writeServoPulse(uint8_t channel, uint16_t pulse, bool force = false, bool exact = false);
+void writeServoPulse(uint8_t channel, uint16_t pulse, bool force = false);
 
 // SIGNS matching the JS frontend implementation
 float sign_H[4] = {1.0, -1.0, 1.0, -1.0}; // FL, FR, BL, BR
@@ -420,14 +397,13 @@ void unlockI2C() {
   if (i2cMutex != NULL) xSemaphoreGive(i2cMutex);
 }
 
-bool setPwmSafe(uint8_t channel, uint16_t on, uint16_t off) {
+void setPwmSafe(uint8_t channel, uint16_t on, uint16_t off) {
   lockI2C();
-  bool ok = pwm.setPWM(channel, on, off) == 0;
+  pwm.setPWM(channel, on, off);
   unlockI2C();
-  return ok;
 }
 
-void writeServoPulse(uint8_t channel, uint16_t pulse, bool force, bool exact) {
+void writeServoPulse(uint8_t channel, uint16_t pulse, bool force) {
   if (channel >= 16) return;
   // Hold the safety lock through the I2C write. A gait snapshot must never
   // re-enable PWM after emergency stop or torque-off has latched.
@@ -436,17 +412,13 @@ void writeServoPulse(uint8_t channel, uint16_t pulse, bool force, bool exact) {
     unlockState();
     return;
   }
-  // Keep the movement deadband, but always deliver the exact settled target.
-  // An identical successful pulse needs no repeat write.
-  if (!force && lastServoPulse[channel] >= 0 &&
-      (lastServoPulse[channel] == (int)pulse ||
-       (!exact && abs(lastServoPulse[channel] - (int)pulse) < SERVO_PULSE_DEADBAND))) {
+  if (!force && lastServoPulse[channel] >= 0 && abs(lastServoPulse[channel] - (int)pulse) < SERVO_PULSE_DEADBAND) {
     unlockState();
     return;
   }
 
-  // Invalidate on failure so the following tick retries even small updates.
-  lastServoPulse[channel] = setPwmSafe(channel, 0, pulse) ? pulse : -1;
+  setPwmSafe(channel, 0, pulse);
+  lastServoPulse[channel] = pulse;
   unlockState();
 }
 
@@ -729,9 +701,6 @@ void formatNullableInt(char* out, size_t outSize, bool enabled, int value) {
 }
 
 void sendJsonBuffer(const char* json) {
-  // This response is written directly; discard WebServer's queued CORS headers
-  // so telemetry polling cannot accumulate them onto the next control/OTA reply.
-  server.clearPendingHeaders();
   WiFiClient client = server.client();
   client.printf(
     "HTTP/1.1 200 OK\r\n"
@@ -845,7 +814,6 @@ void resetImuCalibration() {
 }
 
 void sendImuBinary(const ImuTelemetry &imu) {
-  server.clearPendingHeaders();
   ImuBinaryFrame frame;
   frame.version = IMU_BINARY_VERSION;
   frame.flags = (imu.accelReady ? 0x01 : 0) |
@@ -896,7 +864,6 @@ uint8_t modeCode(const String& mode) {
 }
 
 void sendObsBinary(const String& mode, unsigned long lastCmdAgo, bool estop, bool torque, bool solarConfigured, float solarVoltage, const ImuTelemetry &imu) {
-  server.clearPendingHeaders();
   ObsBinaryFrame frame;
   frame.version = OBS_BINARY_VERSION;
   frame.flags = (estop ? 0x01 : 0) |
@@ -965,107 +932,57 @@ bool requireApiAuth() {
   return false;
 }
 
-bool waitForWifi(const char* profile, unsigned long timeoutMs) {
-  // Retain the attempted profile if auto-reconnect succeeds after this window.
-  selectedWifiProfile = profile;
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
-    server.handleClient();
-    updateAliveLight();
-    delay(100);
-  }
-  sysDebug += String("Wi-Fi ") + profile + ": " + wifiStatusName(WiFi.status()) + "\n";
-  if (WiFi.status() != WL_CONNECTED) return false;
-  return true;
-}
-
-void enterStableFallbackAp() {
-  // STA scans/reconnects share the AP radio and can interrupt direct control.
-  // Stop only STA; retain the running AP and its existing client connections.
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect(false, false);
-  WiFi.mode(WIFI_AP);
-  WiFi.setSleep(false);
-  usingFallbackAp = true;
-  selectedWifiProfile = "none";
-  sysDebug += "Wi-Fi Mode: AP_ONLY (station retries disabled)\n";
-}
-
-void maintainWifi() {
-  static unsigned long stationLostAt = 0;
-  if (usingFallbackAp) return;
-  if (WiFi.status() == WL_CONNECTED) {
-    stationLostAt = 0;
-    return;
-  }
-  if (stationLostAt == 0) stationLostAt = millis();
-  if (millis() - stationLostAt >= 5000) enterStableFallbackAp();
-}
-
-bool secondaryWifiConfigured() {
-  if (strlen(secondarySsid) == 0) return false;
-  if (!SOLAR_SECONDARY_ENTERPRISE) return true;
-  return strlen(SOLAR_SECONDARY_USERNAME) > 0 &&
-         strlen(SOLAR_SECONDARY_PASSWORD) > 0 &&
-         strlen(SOLAR_SECONDARY_CA_PEM) > 0;
-}
-
 void connectWiFi() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.persistent(false);
   WiFi.setSleep(false);
   WiFi.setTxPower(WIFI_POWER_17dBm);
-  // Connection attempts are bounded; never keep scanning during AP operation.
-  WiFi.setAutoReconnect(false);
-  if (!WiFi.softAP(fallbackSsid, fallbackPassword, 6, 0, 4)) {
-    sysDebug += "Fallback AP: START FAILED\n";
-  }
+  WiFi.softAP(fallbackSsid, fallbackPassword, 6, 0, 1);
   usingFallbackAp = true;
-  selectedWifiProfile = "none";
   sysDebug += "Fallback AP Started: " + WiFi.softAPIP().toString() + "\n";
 
-  esp_wifi_sta_wpa2_ent_disable();
   if (strlen(homeSsid) > 0) {
-    sysDebug += "Wi-Fi home: CONNECTING\n";
+    Serial.print("Connecting to home Wi-Fi SSID length: ");
+    Serial.println(strlen(homeSsid));
+    sysDebug += "Home Wi-Fi: CONNECTING\n";
     WiFi.begin(homeSsid, homePassword);
-    waitForWifi("home", 15000);
+  } else {
+    Serial.println("Home Wi-Fi not configured. Staying on fallback AP.");
+    sysDebug += "Home Wi-Fi: NOT CONFIGURED\n";
   }
 
-  if (WiFi.status() != WL_CONNECTED && secondaryWifiConfigured()) {
-    // Disconnect only STA: the robot AP remains available.
-    WiFi.disconnect(false, false);
-    sysDebug += "Wi-Fi secondary: CONNECTING\n";
-    if (SOLAR_SECONDARY_ENTERPRISE) {
-      // Seed certificate validity checks from build time until NTP is available.
-      struct tm buildTime = {};
-      strptime(__DATE__ " " __TIME__, "%b %d %Y %H:%M:%S", &buildTime);
-      time_t buildEpoch = mktime(&buildTime);
-      if (time(nullptr) < buildEpoch) {
-        struct timeval now = {buildEpoch, 0};
-        settimeofday(&now, nullptr);
-      }
-      WiFi.begin(secondarySsid, WPA2_AUTH_PEAP,
-                 SOLAR_SECONDARY_IDENTITY, SOLAR_SECONDARY_USERNAME,
-                 secondaryPassword, SOLAR_SECONDARY_CA_PEM);
-    } else {
-      WiFi.begin(secondarySsid, secondaryPassword);
+  unsigned long start = millis();
+  wl_status_t lastStatus = WiFi.status();
+  while (strlen(homeSsid) > 0 && WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    wl_status_t status = WiFi.status();
+    if (status != lastStatus) {
+      lastStatus = status;
+      Serial.print("Wi-Fi status: ");
+      Serial.println(wifiStatusName(status));
     }
-    waitForWifi("secondary", 20000);
-  } else if (WiFi.status() != WL_CONNECTED && strlen(secondarySsid) > 0) {
-    sysDebug += "Wi-Fi secondary: INCOMPLETE CONFIG (username/password/CA required)\n";
+    ArduinoOTA.handle();
+    server.handleClient();
+    updateAliveLight();
+    delay(100);
   }
 
-  MDNS.begin("solar");
   if (WiFi.status() == WL_CONNECTED) {
     usingFallbackAp = false;
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-    sysDebug += String("Wi-Fi Profile: ") + selectedWifiProfile + "\n";
+    MDNS.begin("solar");
+    Serial.print("Connected to home Wi-Fi. IP: ");
+    Serial.println(WiFi.localIP());
+    sysDebug += "Wi-Fi Mode: HOME\n";
     sysDebug += "IP: " + WiFi.localIP().toString() + "\n";
-  } else {
-    enterStableFallbackAp();
-    sysDebug += "Wi-Fi Mode: FALLBACK_AP\n";
-    sysDebug += "IP: " + WiFi.softAPIP().toString() + "\n";
+    return;
   }
+
+  Serial.print("Home Wi-Fi failed. Status: ");
+  Serial.println(wifiStatusName(WiFi.status()));
+  Serial.print("Home Wi-Fi failed. Fallback AP IP: ");
+  Serial.println(WiFi.softAPIP());
+  sysDebug += "Wi-Fi Mode: FALLBACK_AP\n";
+  sysDebug += "Home Wi-Fi Status: " + String(wifiStatusName(WiFi.status())) + "\n";
+  sysDebug += "IP: " + WiFi.softAPIP().toString() + "\n";
 }
 
 void setLegTarget(int legIndex, float h, float k, float f) {
@@ -1148,6 +1065,16 @@ void blinkStatusLed(int count, int onMs, int offMs) {
 }
 
 void updateAliveLight() {
+  lockState();
+  bool overrideEnabled = statusLedOverride;
+  bool overrideState = statusLedOverrideState;
+  unlockState();
+
+  if (overrideEnabled) {
+    writeStatusLed(overrideState);
+    return;
+  }
+
   unsigned long now = millis();
   unsigned long interval = WiFi.status() == WL_CONNECTED ? 1200 : 300;
   if (now - lastAliveBlink >= interval) {
@@ -1157,11 +1084,11 @@ void updateAliveLight() {
   }
 }
 
-void writeServo(int motorId, float angle, bool exact) {
+void writeServo(int motorId, float angle) {
   float finalAngle = angle + offsets[motorId];
   finalAngle = constrain(finalAngle, 0, 180); 
   int pulse = map(finalAngle, 0, 180, SERVOMIN, SERVOMAX);
-  writeServoPulse(motorToPwmChannel(motorId), pulse, false, exact);
+  writeServoPulse(motorToPwmChannel(motorId), pulse);
 }
 
 void disableServoOutputs() {
@@ -1215,6 +1142,7 @@ void enableMappedLegServoOutputsLocked() {
 void smartWait(int ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
+    ArduinoOTA.handle();
     server.handleClient();
     delay(1);
   }
@@ -1406,16 +1334,16 @@ void loadSettings() {
 #include <esp_wifi.h>
 
 void gaitTask(void *pvParameters) {
-  const TickType_t xDelay = 20 / portTICK_PERIOD_MS; // Saved stable movement cadence.
+  const TickType_t xDelay = 20 / portTICK_PERIOD_MS; // ~50Hz
   unsigned long last_tick = millis();
-  String mode;
-  mode.reserve(16);
+  float walkBlend = 0;
 
   while(1) {
     unsigned long now = millis();
     float dt = (now - last_tick) / 1000.0;
     last_tick = now;
 
+    String mode;
     float local_vx, local_wz, local_speed, local_stride, local_lift;
     bool localCalibrationMode, localTorqueEnabled, localEmergencyStop;
     bool localChargeRestPendingPowerDown;
@@ -1444,6 +1372,7 @@ void gaitTask(void *pvParameters) {
     }
     unlockState();
 
+    if (mode != "walk" || !localTorqueEnabled || localCalibrationMode || localEmergencyStop) walkBlend = 0;
     if (localEmergencyStop) {
        // Motor outputs are disabled by engageEmergencyStop().
     } else if (localCalibrationMode) {
@@ -1601,12 +1530,13 @@ void gaitTask(void *pvParameters) {
             }
         }
         else if (mode == "walk") {
-            gait_phase += dt * local_speed * 2.0; // 2 steps per sec at 1.0
-            if (gait_phase > 1.0) gait_phase -= 1.0;
+            walkBlend = min(1.0f, walkBlend + dt / 0.4f);
+            gait_phase += dt * local_speed * 2.4f;
+            gait_phase -= floorf(gait_phase);
 
-            float st_amp = local_stride * abs(local_vx); // Stride amplitude
-            float lift_amp = local_lift; // Lift amplitude
-            float turn_amp = 20.0 * local_wz;
+            float st_amp = local_stride * abs(local_vx) * walkBlend;
+            float lift_amp = local_lift * walkBlend;
+            float turn_amp = 20.0f * local_wz * walkBlend;
 
             // Simple 2-beat Diagonal Trot
             // Pair 1: FL (0) and BR (3)
@@ -1617,18 +1547,7 @@ void gaitTask(void *pvParameters) {
             if (p2 > 1.0) p2 -= 1.0;
 
             auto calcLeg = [](float p, float v_dir, float t_dir, float s_amp, float l_amp) {
-                float swing = 0; float lift = 0;
-                // Swing profile (half cycle lift, half cycle push)
-                if (p < 0.5) {
-                    // Swing phase
-                    swing = cos(p * 2.0 * PI) * -(s_amp * v_dir + t_dir);
-                    lift = sin(p * 2.0 * PI) * l_amp;
-                } else {
-                    // Stance phase
-                    swing = cos(p * 2.0 * PI) * -(s_amp * v_dir + t_dir);
-                    lift = 0;
-                }
-                return std::make_pair(swing, lift);
+                return walkingLegTarget(p, s_amp * v_dir + t_dir, l_amp);
             };
 
             // FL
@@ -1653,7 +1572,7 @@ void gaitTask(void *pvParameters) {
     }
 
     // Interpolate current toward target
-    float max_deg_per_sec = (mode == "walk") ? 400.0 : 150.0;
+    float max_deg_per_sec = (mode == "walk") ? 600.0 : 150.0;
     if (mode == "rl") max_deg_per_sec = 500.0;
     if (mode == "flip") max_deg_per_sec = 300.0;
     if (mode == "wave") max_deg_per_sec = 240.0;
@@ -1668,15 +1587,14 @@ void gaitTask(void *pvParameters) {
                 continue;
             }
             float diff = targetAngle[i] - currentAngle[i];
-            bool targetReached = abs(diff) <= max_step;
-            if (targetReached) {
+            if (abs(diff) <= max_step) {
                 currentAngle[i] = targetAngle[i];
             } else {
                 currentAngle[i] += (diff > 0) ? max_step : -max_step;
             }
             float angleToWrite = currentAngle[i];
             unlockState();
-            writeServo(i, angleToWrite, targetReached);
+            writeServo(i, angleToWrite);
         }
     }
 
@@ -1689,7 +1607,7 @@ void gaitTask(void *pvParameters) {
 }
 
 void imuTask(void *pvParameters) {
-  const TickType_t xDelay = pdMS_TO_TICKS(IMU_SAMPLE_INTERVAL_MS);
+  const TickType_t xDelay = IMU_SAMPLE_INTERVAL_MS / portTICK_PERIOD_MS;
   TickType_t lastWakeTime = xTaskGetTickCount();
   uint32_t lastDetectAttemptMs = 0;
 
@@ -1707,19 +1625,15 @@ void imuTask(void *pvParameters) {
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
   Serial.begin(115200);
+  sysDebug += walkingGaitMathValid() ? "GAIT MATH SELF TEST: PASS\n" : "GAIT MATH SELF TEST: FAILED\n";
   startup_time = millis();
   stateMutex = xSemaphoreCreateMutex();
   i2cMutex = xSemaphoreCreateMutex();
   imuI2cMutex = xSemaphoreCreateMutex();
-  if (!sysDebug.begin()) Serial.println("Debug log mutex allocation failed");
-  sysDebug += String("OS Boot OK\nFW: ") + FIRMWARE_VERSION + "\n";
-  cmd_mode.reserve(16);
   server.collectHeaders(AUTH_HEADER_KEYS, 1);
 
   pinMode(STATUS_LED_PIN, OUTPUT);
   writeStatusLed(false);
-  pinMode(FRONT_FLASH_PIN, OUTPUT);
-  digitalWrite(FRONT_FLASH_PIN, LOW);
   blinkStatusLed(3, 120, 120);
   if (solarPanelAdcEnabled()) {
     pinMode(SOLAR_PANEL_ADC_PIN, INPUT);
@@ -1809,10 +1723,6 @@ void setup() {
       s->set_hmirror(s, 1);
   }
 
-  if (cameraReady && !cameraTransfer.begin()) {
-    sysDebug += "Camera transfer task: FAILED; control and web OTA still available\n";
-  }
-
   // Define HTTP Handlers
   server.on("/", []() { server.send(200, "text/plain", String("Robot Online. FW: ") + FIRMWARE_VERSION); });
   server.on("/version", []() { server.send(200, "text/plain", FIRMWARE_VERSION); });
@@ -1869,32 +1779,38 @@ void setup() {
     }
     last_camera_time = now;
 
-    if (!cameraTransfer.ready()) {
-      server.send(503, "text/plain", "Camera transfer task unavailable");
+    camera_fb_t * fb = esp_camera_fb_get();
+    if (!fb) {
+      server.send(500, "text/plain", "Capture Failed");
       return;
     }
-    if (!cameraTransfer.submit(server.client(), ms_per_frame)) {
-      sendCors();
-      server.sendHeader("Access-Control-Expose-Headers", "X-Camera-Interval-Ms,X-Retry-After-Ms,X-Camera-Frame-Ms");
-      server.sendHeader("X-Camera-Interval-Ms", String(ms_per_frame));
-      server.sendHeader("X-Retry-After-Ms", String(ms_per_frame));
-      server.send(429, "text/plain", "Camera Busy");
-      return;
-    }
-    // The worker retains this connection and sends the complete response.
-    // Return immediately so the main server can process commands and web OTA.
-    server.releaseCaptureClient();
 
+    WiFiClient client = server.client();
+    client.setNoDelay(true);
+    sendCors();
+    server.sendHeader("Cache-Control", "no-store");
+    server.sendHeader("Access-Control-Expose-Headers", "X-Camera-Interval-Ms,X-Retry-After-Ms,X-Camera-Frame-Ms");
+    server.sendHeader("X-Camera-Interval-Ms", String(ms_per_frame));
+    server.sendHeader("X-Camera-Frame-Ms", String((unsigned long)(fb->timestamp.tv_sec * 1000ULL + fb->timestamp.tv_usec / 1000)));
+    server.setContentLength(fb->len);
+    server.send(200, "image/jpeg", "");
+    size_t sent = 0;
+    while (sent < fb->len && client.connected()) {
+      size_t written = client.write(fb->buf + sent, fb->len - sent);
+      if (written == 0) break;
+      sent += written;
+    }
+    esp_camera_fb_return(fb);
   });
 
   server.on("/debug", []() {
     if (!requireApiAuth()) return;
-    String dbg = sysDebug.snapshot();
     lockState();
+    String dbg = sysDebug;
     dbg += "Mode: " + cmd_mode + "\n";
     dbg += "Torque: " + String(torqueEnabled ? "ON" : "OFF") + "\n";
     dbg += "Calibration: " + String(calibrationMode ? "ON" : "OFF") + "\n";
-    dbg += "Front Flash: " + String(frontFlashEnabled ? "ON" : "OFF") + "\n";
+    dbg += "Status LED Override: " + String(statusLedOverride ? "ON" : "OFF") + "\n";
     unlockState();
     dbg += "Free Heap: " + String(ESP.getFreeHeap()) + "\n";
     server.send(200, "text/plain", dbg);
@@ -2024,7 +1940,6 @@ void setup() {
       float lift = cmd_lift;
       bool estop = emergencyStop;
       bool torque = torqueEnabled;
-      bool flash = frontFlashEnabled;
       imu = imuTelemetry;
       unlockState();
       bool solarConfigured = solarPanelAdcEnabled();
@@ -2040,7 +1955,7 @@ void setup() {
           json,
           sizeof(json),
           "{\"mode\":\"%s\",\"uptime_ms\":%lu,\"last_cmd_ms_ago\":%lu,"
-          "\"emergency_stop\":%s,\"torque_enabled\":%s,\"flash_enabled\":%s,\"solar_panel_configured\":%s,"
+          "\"emergency_stop\":%s,\"torque_enabled\":%s,\"solar_panel_configured\":%s,"
           "\"solar_panel_voltage_v\":%s,\"imu_ready\":%s,\"accel_ready\":%s,"
           "\"gyro_ready\":%s,\"mpu6050_addr\":%u,\"imu_seq\":%lu,\"imu_age_ms\":%lu,"
           "\"roll_deg\":%.1f,\"pitch_deg\":%.1f}",
@@ -2049,7 +1964,6 @@ void setup() {
           (unsigned long)lastCmdAgo,
           boolJson(estop),
           boolJson(torque),
-          boolJson(flash),
           boolJson(solarConfigured),
           solarVoltageJson,
           boolJson(imu.accelReady || imu.gyroReady),
@@ -2067,7 +1981,7 @@ void setup() {
 
       char solarAdcJson[16];
       char solarVoltageJson[16];
-      char json[1280];
+      char json[1152];
       wl_status_t wifiStatus = WiFi.status();
       IPAddress robotIp = wifiStatus == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
       IPAddress apIp = WiFi.softAPIP();
@@ -2078,9 +1992,9 @@ void setup() {
         sizeof(json),
         "{\"mode\":\"%s\",\"uptime_ms\":%lu,\"free_heap\":%u,\"last_cmd_ms_ago\":%lu,"
         "\"gait_hz\":50,\"camera_fps_limit\":%d,\"stride\":%.2f,\"lift\":%.2f,"
-        "\"emergency_stop\":%s,\"torque_enabled\":%s,\"flash_enabled\":%s,\"wifi_clients\":%u,"
+        "\"emergency_stop\":%s,\"torque_enabled\":%s,\"wifi_clients\":%u,"
         "\"wifi_mode\":\"%s\",\"home_wifi_configured\":%s,\"home_wifi_status\":\"%s\","
-        "\"secondary_wifi_configured\":%s,\"wifi_profile\":\"%s\",\"home_wifi_rssi\":%d,\"ip\":\"%u.%u.%u.%u\",\"ap_ip\":\"%u.%u.%u.%u\","
+        "\"home_wifi_rssi\":%d,\"ip\":\"%u.%u.%u.%u\",\"ap_ip\":\"%u.%u.%u.%u\","
         "\"solar_panel_configured\":%s,\"solar_panel_adc_pin\":%d,\"solar_panel_adc_mv\":%s,"
         "\"solar_panel_voltage_v\":%s,\"imu_ready\":%s,\"accel_ready\":%s,\"gyro_ready\":%s,"
         "\"mpu6050_addr\":%u,\"accel_addr\":%u,\"imu_seq\":%lu,\"imu_age_ms\":%lu,"
@@ -2095,13 +2009,10 @@ void setup() {
         lift,
         boolJson(estop),
         boolJson(torque),
-        boolJson(flash),
         (unsigned)WiFi.softAPgetStationNum(),
-        wifiStatus == WL_CONNECTED ? (strcmp(selectedWifiProfile, "secondary") == 0 ? "secondary_wifi_ap_fallback" : "home_wifi_ap_fallback") : "fallback_ap",
+        wifiStatus == WL_CONNECTED ? "home_wifi_ap_fallback" : "fallback_ap",
         boolJson(strlen(homeSsid) > 0),
         wifiStatusName(wifiStatus),
-        boolJson(secondaryWifiConfigured()),
-        wifiStatus == WL_CONNECTED ? selectedWifiProfile : "none",
         wifiStatus == WL_CONNECTED ? WiFi.RSSI() : 0,
         (unsigned)robotIp[0],
         (unsigned)robotIp[1],
@@ -2159,22 +2070,18 @@ void setup() {
   server.on("/flash", []() {
     if (!requireApiAuth()) return;
     String state = server.arg("state");
-    if (state != "0" && state != "1") {
-      server.send(400, "text/plain", "Expected state=0 or state=1");
-      return;
-    }
     lockState();
-    frontFlashEnabled = state == "1";
-    digitalWrite(FRONT_FLASH_PIN, frontFlashEnabled ? HIGH : LOW);
+    statusLedOverride = true;
+    statusLedOverrideState = state == "1";
     unlockState();
+    writeStatusLed(statusLedOverrideState);
     server.send(200, "text/plain", "FLASH " + state);
   });
 
   server.on("/flash/auto", []() {
     if (!requireApiAuth()) return;
     lockState();
-    frontFlashEnabled = false;
-    digitalWrite(FRONT_FLASH_PIN, LOW);
+    statusLedOverride = false;
     unlockState();
     server.send(200, "text/plain", "FLASH AUTO");
   });
@@ -2425,8 +2332,25 @@ void setup() {
     server.send(200, "text/plain", "TEST ACK");
   });
 
+  ArduinoOTA.setHostname("SOLAR_ESP32");
+  ArduinoOTA.onStart([]() {
+    lockState();
+    cmd_mode = "stand";
+    cmd_vx = 0;
+    cmd_vy = 0;
+    cmd_wz = 0;
+    unlockState();
+    Serial.println("ArduinoOTA start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("ArduinoOTA end");
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("ArduinoOTA error[%u]\n", error);
+  });
+  ArduinoOTA.begin(); 
+  
   server.begin();
-  server.enableLowLatency();
   
   // Create Gait Task on Core 1 (App Core)
   xTaskCreatePinnedToCore(
@@ -2440,7 +2364,7 @@ void handlePS5() {
 }
 
 void loop() {
-  maintainWifi();
+  ArduinoOTA.handle();
   server.handleClient();
   savePendingImuCalibration();
   // handlePS5(); disabled to save memory

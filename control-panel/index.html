@@ -1,241 +1,289 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SOLAR Control Panel</title>
-    <link rel="stylesheet" href="./style.css">
-  </head>
-  <body>
-    <div class="app-container">
-      <header class="top-bar">
-        <div class="branding">
-          <span class="eyebrow">Quadruped Operations</span>
-          <h1>S.O.L.A.R.</h1>
-          <p class="brand-subtitle">Self-Operating Legged Autonomous Robot</p>
-        </div>
-        <div class="system-status">
-          <a href="./tablet.html" class="nav-switch-tablet" title="Switch to Tactical Tablet HUD">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-            <span>TABLET HUD</span>
-          </a>
-          <span class="status-label">Connection</span>
-          <div class="status-indicator">
-            <span class="block offline"></span>
-            <span class="status-text target-ip-text">NODE: [OFFLINE]</span>
-          </div>
-        </div>
-      </header>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0b0e12" />
+<title>SOLAR · Robot control</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div class="app-container">
+<header class="top-bar">
+<div class="branding">
+<span class="brand-mark" aria-hidden="true">S</span>
+<div>
+<h1>SOLAR<span> / QUADRUPED CONSOLE</span>
+</h1>
 
-      <nav class="tab-nav" aria-label="Control panel views">
-        <button class="nav-btn active" data-target="view-tactical">Operations</button>
-        <button class="nav-btn" data-target="view-calib">Calibration</button>
-        <button class="nav-btn" data-target="view-path">Sequences</button>
-      </nav>
+</div>
+</div>
+<div class="header-actions">
+<div class="status-indicator">
+<span class="block offline">
+</span>
+<span class="target-ip-text">LINK OFFLINE</span>
+</div>
+<button class="btn btn-estop" id="btn-estop" aria-label="Emergency stop">■ E-STOP <kbd>Esc</kbd>
+</button>
+</div>
+</header>
+<div class="workspace-bar">
+<nav class="tab-nav" aria-label="Workspace">
+<button class="nav-btn active" data-target="view-tactical" aria-pressed="true">Drive</button>
+<button class="nav-btn" data-target="view-calib" aria-pressed="false">Calibration</button>
+</nav>
+<span class="workspace-note">MANUAL INPUT</span>
+</div>
+<section class="session-strip" aria-label="Robot state">
+<div>
+<span class="section-kicker">MODE</span>
+<strong id="robot-mode">OFFLINE</strong>
+</div>
+<div>
+<span class="section-kicker">TORQUE</span>
+<strong id="motor-status">UNKNOWN</strong>
+</div>
+<div>
+<span class="section-kicker">SOLAR</span>
+<strong id="solar-status">—</strong>
+</div>
+<div class="session-next">
+<span class="section-kicker">INTERLOCK</span>
+<strong id="session-guidance" role="status">LINK REQUIRED</strong>
+</div>
+<button class="btn btn-primary" id="btn-torque">ENABLE TORQUE</button>
+<button class="btn btn-danger-outline" id="btn-clear-estop">RESET E-STOP</button>
+</section>
+<main class="dashboard-grid" id="view-tactical">
+<div class="vision-column">
+<section class="glass-panel robot-link">
+<div class="link-heading">
+<span class="step-number">NET</span>
+<div>
+<h2>LINK</h2>
 
-      <main class="dashboard-grid" id="view-tactical">
-        <section class="main-view tactical-panel glass-panel">
-          <div class="panel-header">
-            <div>
-              <span class="section-kicker">Vision</span>
-              <h2>Live Camera</h2>
-            </div>
-            <div class="feed-status" id="feed-status">Manual Capture</div>
-          </div>
-          <div class="camera-container">
-            <img id="cam-stream" src="" alt="Camera feed awaiting capture" class="cam-feed" />
-            <div class="camera-placeholder" id="camera-placeholder">
-              <span>No frame loaded</span>
-            </div>
-            <div class="cam-overlay">
-              <div class="crosshair-tactical">
-                <div class="hline"></div>
-                <div class="vline"></div>
-                <div class="center-dot"></div>
-              </div>
-              <div class="cam-data-corners">
-                <div class="corner tl"></div>
-                <div class="corner tr"></div>
-                <div class="corner bl"></div>
-                <div class="corner br"></div>
-              </div>
-              <div class="cam-data">
-                <span id="coord-hud">Awaiting IMU telemetry</span>
-                <span>160x120 QQVGA</span>
-              </div>
-            </div>
-          </div>
-        </section>
+</div>
+</div>
+<div class="connection-config">
+<label for="ip-input">TARGET</label>
+<div class="input-group">
+<input type="text" id="ip-input" value="solar.local" autocomplete="url" inputmode="url" />
+<button id="apply-ip" class="btn btn-primary">CONNECT</button>
+</div>
+</div>
+<details class="access-details">
+<summary>AUTH</summary>
+<label for="token-input">API TOKEN</label>
+<input type="password" id="token-input" autocomplete="current-password" placeholder="Optional" />
+</details>
+</section>
+<section class="glass-panel main-view">
+<div class="panel-header">
+<div>
+<span class="section-kicker">01 / VISION</span>
+<h2>CAMERA</h2>
+</div>
+<span class="feed-status" id="feed-status">FRAME IDLE</span>
+</div>
+<div class="camera-container">
+<img id="cam-stream" src="" alt="Robot camera frame" class="cam-feed" />
+<div class="camera-placeholder" id="camera-placeholder">
 
-        <aside class="panel tactical-panel side-panel glass-panel">
-          <div class="panel-header">
-            <div>
-              <span class="section-kicker">Connection</span>
-              <h2>Robot Link</h2>
-            </div>
-          </div>
-          <div class="panel-content">
-            <div class="connection-config control-group">
-              <label for="ip-input">Robot or gateway address</label>
-              <div class="input-group">
-                <input type="text" id="ip-input" value="solar.local" autocomplete="url" inputmode="url" />
-                <button id="apply-ip" class="btn btn-primary">Connect</button>
-              </div>
-              <label for="token-input" class="token-label">Access code</label>
-              <input type="password" id="token-input" autocomplete="current-password" placeholder="Optional" />
-            </div>
+<h3>NO FRAME</h3>
+<p>JPEG / RX IDLE</p>
+</div>
+<div class="cam-overlay">
+<div class="crosshair-tactical">
+<div class="hline">
+</div>
+<div class="vline">
+</div>
+</div>
+<div class="cam-data">
+<span id="coord-hud">IMU NO DATA</span>
+<span>ROBOT POV</span>
+</div>
+</div>
+</div>
+<div class="camera-toolbar">
+<span>JPEG</span>
+<div>
+<button class="btn" id="btn-flash" aria-pressed="false">FLASH OFF</button>
+<button class="btn" id="btn-capture">CAPTURE <kbd>Q</kbd>
+</button>
+<button class="btn btn-primary" id="btn-live-feed">STREAM</button>
+</div>
+</div>
+</section>
+<details class="glass-panel diagnostics">
+<summary>TELEMETRY / LOG <span id="proxy-mode-text">DIRECT</span>
+</summary>
+<div class="diagnostic-tools">
+<button class="btn" id="btn-ping">PING</button>
+</div>
+<div class="terminal-grid">
+<pre class="terminal-box telemetry-box" id="telemetry-out">NO TELEMETRY</pre>
+<div class="terminal-box" id="terminal-out">LINK IDLE</div>
+</div>
+</details>
+</div>
+<aside class="control-column">
+<section class="glass-panel pilot-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">02 / INPUT CONTROL</span>
+<h2>DRIVE</h2>
+</div>
+<span class="small-tag">HOLD TO MOVE</span>
+</div>
+<div class="input-switch" role="group" aria-label="Driving input">
+<button class="input-mode active" id="input-controller" aria-pressed="true">GAMEPAD</button>
+<button class="input-mode" id="input-backup" aria-pressed="false">WASD / TOUCH</button>
+</div>
+<div id="controller-controls">
+<div class="controller-state">
+<span class="controller-dot" id="controller-dot">
+</span>
+<div>
+<strong id="controller-status" role="status">PAD NOT DETECTED</strong>
+<p id="controller-name">USB / BLUETOOTH</p>
+</div>
+</div>
+<div class="stick-legend">
+<span>
+<b>L-STICK</b> FORWARD / REVERSE</span>
+<span>
+<b>R-STICK</b> YAW</span>
+</div>
+<div class="mapping-grid">
+<span>
+<kbd class="ps-glyph" aria-label="Cross">×</kbd> Sit</span>
+<span>
+<kbd class="ps-glyph" aria-label="Circle">○</kbd> Stand</span>
+<span>
+<kbd class="ps-glyph" aria-label="Square">□</kbd> Wave</span>
+<span>
+<kbd class="ps-glyph" aria-label="Triangle">△</kbd> Dance</span>
+<span>
+<kbd>L1</kbd> Stretch</span>
+<span>
+<kbd>R1</kbd> Wag</span>
+<span>
+<kbd>Options</kbd> Capture</span>
+<span class="mapping-stop">
+<kbd>R2</kbd> E-STOP</span>
+</div>
+<p class="input-hint">NEUTRAL → STOP · RECONNECT → NEUTRAL RESET</p>
+</div>
+<div id="backup-controls" hidden>
+<div class="backup-heading">
+<h3>WASD / TOUCH</h3>
+<p>HOLD → DRIVE · RELEASE → STOP</p>
+</div>
+<div class="wasd-cluster">
+<button class="wasd-key" id="key-w" aria-label="Walk forward, W">
+<span>↑</span>
+<kbd>W</kbd>
+</button>
+<div class="wasd-row">
+<button class="wasd-key" id="key-a" aria-label="Turn left, A">
+<span>↶</span>
+<kbd>A</kbd>
+</button>
+<button class="wasd-key" id="key-s" aria-label="Walk backward, S">
+<span>↓</span>
+<kbd>S</kbd>
+</button>
+<button class="wasd-key" id="key-d" aria-label="Turn right, D">
+<span>↷</span>
+<kbd>D</kbd>
+</button>
+</div>
+</div>
+<p class="input-hint">ESC / SPACE → E-STOP · Q → CAPTURE</p>
+</div>
+<div class="pace-control">
+<label for="slider-pace">PACE <span>
+<span id="val-pace">150</span> ms</span>
+</label>
+<input type="range" id="slider-pace" min="10" max="500" value="150" step="10" />
+<div class="range-labels">
+<span>Faster</span>
+<span>Slower</span>
+</div>
+</div>
+</section>
+<section class="glass-panel posture-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">03 / ROBOT ACTIONS</span>
+<h2>POSTURE</h2>
+</div>
+</div>
+<div class="posture-actions">
 
-            <div class="control-group host-guardrail">
-              <div class="group-title">System Health</div>
-              <div class="guardrail-grid">
-                <span>Link path</span>
-                <strong id="proxy-mode-text">Browser direct mode</strong>
-                <span>Telemetry</span>
-                <strong>Status 1.5s + IMU 4 Hz</strong>
-                <span>Camera</span>
-                <strong>Manual pull</strong>
-              </div>
+<button class="btn" id="btn-stand">STAND / STOP</button>
+<button class="btn" id="btn-sit">Sit</button>
+<button class="btn" id="btn-charge-rest">PARK</button>
+</div>
+<p class="input-hint">PARK → TUCK → TORQUE OFF</p>
+<details class="expressions">
+<summary>EMOTES</summary>
+<div class="action-grid">
+<button class="btn" id="btn-wave">Wave</button>
+<button class="btn" id="btn-wag">Wag</button>
+<button class="btn" id="btn-dance">Dance</button>
+<button class="btn" id="btn-stretch">Stretch</button>
+<button class="btn" id="btn-play-bow">Play bow</button>
+<button class="btn" id="btn-curious">Curious</button>
+<button class="btn btn-warning" id="btn-turtle">Flip / recover</button>
+</div>
+</details>
+</section>
+</aside>
+</main>
+<main class="dashboard-grid dashboard-grid--single" id="view-calib">
+<section class="tactical-panel full-panel glass-panel">
+<div class="panel-header">
+<div>
+<span class="section-kicker">Robot setup</span>
+<h2>CALIBRATION</h2>
+</div>
+<div class="panel-note">DRIVE INHIBITED</div>
+</div>
+<div class="panel-content calib-content">
+<div class="drive-card control-group">
+<div class="group-title">IMU zero</div>
+<p>TORQUE OFF · LEVEL POSE · HOLD STILL 2 s</p>
+<div class="action-grid">
+<button class="btn btn-secondary" id="btn-imu-zero">Zero IMU</button>
+<button class="btn btn-neutral" id="btn-imu-reset">Reset IMU Zero</button>
+</div>
+<p id="imu-zero-status" role="status">IMU NO DATA</p>
+</div>
+<div class="calib-toolbar">
+<button class="btn btn-danger-outline" id="btn-calib-mode">ENTER CALIB</button>
+<button class="btn btn-warning" id="btn-calib-torque">ENABLE TORQUE</button>
+<button class="btn btn-warning" id="btn-identify-legs">IDENTIFY LEGS</button>
+</div>
+<div class="instruction-strip">
+              OFFSET ± <span class="keyboard-chip">↑ / ↓</span> · SHIFT = 2° · WRITE NVS = PERSIST
             </div>
-
-            <div class="control-group safety-group">
-              <div class="group-title">Safety</div>
-              <div class="safety-actions">
-                <button class="btn btn-estop" id="btn-estop">E-Stop</button>
-                <button class="btn btn-danger-outline" id="btn-clear-estop">Clear E-Stop</button>
-              </div>
-            </div>
-
-            <div class="control-group">
-              <div class="group-title">Actions</div>
-              <div class="action-grid actions">
-                <button class="btn btn-secondary" id="btn-ping">Ping Node</button>
-                <button class="btn btn-neutral" id="btn-flash">Toggle Flash</button>
-                <button class="btn btn-warning" id="btn-turtle">Turtle</button>
-                <button class="btn btn-warning" id="btn-dance">Dance</button>
-                <button class="btn btn-warning" id="btn-sit">Sit</button>
-                <button class="btn btn-warning" id="btn-stretch">Stretch</button>
-                <button class="btn btn-warning" id="btn-wag">Wag</button>
-                <button class="btn btn-warning" id="btn-wave">Wave</button>
-                <button class="btn btn-warning" id="btn-play-bow">Play Bow</button>
-                <button class="btn btn-warning" id="btn-curious">Curious</button>
-                <button class="btn btn-warning" id="btn-charge-rest">Charge Rest</button>
-                <button class="btn btn-warning" id="btn-capture">Capture</button>
-                <button class="btn btn-secondary" id="btn-live-feed">Live Feed</button>
-              </div>
-            </div>
-
-            <div class="drive-card control-group">
-              <div class="group-title">Drive</div>
-              <div class="wasd-cluster">
-                <div class="wasd-key" id="key-w">W</div>
-                <div class="wasd-row">
-                  <div class="wasd-key" id="key-a">A</div>
-                  <div class="wasd-key" id="key-s">S</div>
-                  <div class="wasd-key" id="key-d">D</div>
-                </div>
-              </div>
-              <div class="slider-group">
-                <label for="slider-pace">Cycle delay <span><span id="val-pace">150</span> ms</span></label>
-                <input type="range" id="slider-pace" min="10" max="500" value="150" step="10">
-              </div>
-            </div>
-
-            <div class="terminal-grid">
-              <div class="terminal-box telemetry-box" id="telemetry-out">
-                &gt; AWAITING TELEMETRY...
-              </div>
-              <div class="terminal-box" id="terminal-out">
-                &gt; SYSTEM BOOT SEQ... OK<br>
-                &gt; WAITING FOR NODE...<br>
-              </div>
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      <main class="dashboard-grid dashboard-grid--single" id="view-calib">
-        <section class="tactical-panel full-panel glass-panel">
-          <div class="panel-header">
-            <div>
-              <span class="section-kicker">Kinematic Calibration Array</span>
-              <h2>Live Tuning</h2>
-            </div>
-            <div class="panel-note">Live tuning enabled</div>
-          </div>
-          <div class="panel-content calib-content">
-            <div class="calib-toolbar">
-              <button class="btn btn-danger-outline" id="btn-calib-mode">Enable Calib Mode</button>
-              <button class="btn btn-warning" id="btn-torque">Enable Torque</button>
-              <button class="btn btn-warning" id="btn-test-sequence">Identify Leg Sets</button>
-            </div>
-
-            <div class="instruction-strip">
-              Select an offset field. Use <span class="keyboard-chip">Up</span> or
-              <span class="keyboard-chip">Down</span> to tune live, then save to NVS.
-            </div>
-
-            <div class="calib-scroll" id="calib-container">
-              <div class="warning-text">AWAITING NODE CONNECTION...</div>
-            </div>
-            <button class="btn btn-primary" id="btn-save-calib">Save to NVS</button>
-          </div>
-        </section>
-      </main>
-
-      <main class="dashboard-grid path-grid" id="view-path">
-        <section class="tactical-panel full-panel glass-panel">
-          <div class="panel-header">
-            <div>
-              <span class="section-kicker">Motion Plan</span>
-              <h2>Build Sequence</h2>
-            </div>
-            <div class="panel-note">Select to append</div>
-          </div>
-          <div class="panel-content">
-            <div class="slider-group">
-              <label for="path-duration-slider">Action duration <span><span id="val-path-duration">1500</span> ms</span></label>
-              <input type="range" id="path-duration-slider" min="500" max="5000" step="100" value="1500">
-            </div>
-
-            <div class="action-grid actions">
-              <button class="btn btn-secondary path-add-btn" data-action="W">Walk Forward</button>
-              <button class="btn btn-secondary path-add-btn" data-action="S">Walk Back</button>
-              <button class="btn btn-secondary path-add-btn" data-action="A">Turn Left</button>
-              <button class="btn btn-secondary path-add-btn" data-action="D">Turn Right</button>
-              <button class="btn btn-warning path-add-btn" data-action="F">Flip</button>
-              <button class="btn btn-warning path-add-btn" data-action="E">Dance</button>
-              <button class="btn btn-warning path-add-btn" data-action="V">Wave</button>
-              <button class="btn btn-neutral path-add-btn btn-wide" data-action="WAIT">Wait / Delay</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="tactical-panel full-panel glass-panel">
-          <div class="panel-header">
-            <div>
-              <span class="section-kicker">Execution</span>
-              <h2>Autonomous Loop</h2>
-            </div>
-            <div class="panel-note">Continuous loop</div>
-          </div>
-          <div class="panel-content path-panel-content">
-            <div class="calib-scroll queue-box" id="path-queue-container"></div>
-
-            <div class="button-row">
-              <button class="btn btn-warning btn-grow" id="btn-path-run">Execute Loop</button>
-              <button class="btn btn-danger-outline" id="btn-path-stop">Halt</button>
-              <button class="btn btn-neutral" id="btn-path-clear">Clear</button>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer class="bottom-bar">
-        <p>Secure channel / distributed reinforcement learning architecture</p>
-        <p>System time: <span id="sys-time">00:00:00</span></p>
-      </footer>
-    </div>
-
-    <script type="module" src="./main.js"></script>
-  </body>
+<div class="calib-scroll" id="calib-container">
+<div class="warning-text">LINK REQUIRED</div>
+</div>
+<button class="btn btn-primary" id="btn-save-calib">WRITE NVS</button>
+</div>
+</section>
+</main>
+<footer class="bottom-bar">
+<p>SOLAR <span>·</span> LOCAL OPERATOR CONSOLE</p>
+<p>TIME <span id="sys-time">00:00:00</span>
+</p>
+</footer>
+</div>
+<script type="module" src="./main.js">
+</script>
+</body>
 </html>

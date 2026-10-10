@@ -7,6 +7,7 @@
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
+    "test": "node --test tests/safety.test.cjs tests/camera.test.cjs tests/imu-calibration.test.js",
     "dev": "vite",
     "electron:dev": "node electron/dev-server.cjs",
     "build": "vite build",

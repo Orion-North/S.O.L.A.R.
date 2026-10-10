@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = resolve(fileURLToPath(new URL('.', import.meta.url)));
@@ -18,6 +18,8 @@ const robotRoutes = new Set([
   '/capture',
   '/debug',
   '/imu',
+  '/imu/calibrate',
+  '/imu/calibration/reset',
   '/obs',
   '/cmd',
   '/rl',
@@ -97,6 +99,7 @@ async function proxyRobot(req, res, url) {
     const upstream = await fetch(target, {
       method: req.method,
       headers,
+      signal: AbortSignal.timeout(url.pathname === '/capture' ? 4000 : 2000),
     });
 
     sendCors(res);
@@ -110,29 +113,30 @@ async function proxyRobot(req, res, url) {
     }
     res.end();
   } catch (error) {
+    if (res.headersSent) { res.destroy(); return; }
     res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: 'robot_unreachable', detail: String(error.message || error) }));
   }
 }
 
-function serveStatic(res, pathname) {
+function serveStatic(res, pathname, root = staticRoot) {
   const requested = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   const safePath = normalize(requested).replace(/^(\.\.[/\\])+/, '');
-  let filePath = resolve(staticRoot, safePath);
-  const publicPath = resolve(staticRoot, 'public', safePath);
+  let filePath = resolve(root, safePath);
+  const publicPath = resolve(root, 'public', safePath);
 
   if ((!existsSync(filePath) || !statSync(filePath).isFile()) && existsSync(publicPath) && statSync(publicPath).isFile()) {
     filePath = publicPath;
   }
 
-  if (!filePath.startsWith(staticRoot) || !existsSync(filePath) || !statSync(filePath).isFile()) {
+  if (!filePath.startsWith(root + sep) || !existsSync(filePath) || !statSync(filePath).isFile()) {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');
     return;
   }
 
   const contentType = mimeTypes[extname(filePath).toLowerCase()] || 'application/octet-stream';
-  res.writeHead(200, { 'content-type': contentType });
+  res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-cache' });
   createReadStream(filePath).pipe(res);
 }
 

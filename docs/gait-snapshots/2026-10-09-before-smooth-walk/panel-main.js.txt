@@ -22,22 +22,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(tokenInput) tokenInput.value = apiToken;
   if(proxyModeText) {
     proxyModeText.textContent = desktopInfo && desktopInfo.desktopProxy
-      ? `PROXY v${desktopInfo.version}`
-      : 'DIRECT';
+      ? `Desktop proxy v${desktopInfo.version}`
+      : 'Browser direct mode';
   }
   
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      stopLostInput();
-      operationsActive = btn.getAttribute('data-target') === 'view-tactical';
-      navBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
+      navBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      btn.setAttribute('aria-pressed', 'true');
       const trg = btn.getAttribute('data-target');
       document.getElementById('view-tactical').style.display = trg === 'view-tactical' ? 'grid' : 'none';
       document.getElementById('view-calib').style.display = trg === 'view-calib' ? 'flex' : 'none';
-
+      document.getElementById('view-path').style.display = trg === 'view-path' ? 'grid' : 'none';
       if(trg === 'view-calib') document.getElementById('view-calib').style.flexDirection = 'column';
     });
   });
@@ -160,12 +157,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     ipInput.value = savedIP;
     updateTargets(savedIP);
   } else {
-    logTerminal("LINK IDLE");
+    logTerminal("AWAITING TARGET IP CONFIGURATION...");
   }
 
   async function updateTargets(ip) {
-    logTerminal(`LINK TX | ${ip}`);
-    targetIpText.innerText = 'LINK PENDING';
+    logTerminal(`ESTABLISHING LINK TO ${ip}...`);
+    targetIpText.innerText = `NODE: [SEARCHING]`;
     statusBlock.classList.add('offline');
     
     try {
@@ -175,16 +172,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearTimeout(timeoutId);
       
       if(res.ok) {
-        logTerminal("LINK ACK");
-        targetIpText.innerText = `LINK ${ip}`;
+        logTerminal("LINK ESTABLISHED. READY FOR CAPTURE...");
+        targetIpText.innerText = `NODE: [${ip}]`;
         statusBlock.classList.remove('offline');
         loadCalibrationData(ip);
       } else {
         throw new Error('Bad Status');
       }
     } catch(e) {
-      logTerminal(`LINK FAIL | ${ip}`);
-      targetIpText.innerText = 'LINK OFFLINE';
+      logTerminal(`ERROR: UNABLE TO REACH ${ip}. ARE YOU ON THE HOTSPOT?`);
+      targetIpText.innerText = `NODE: [OFFLINE]`;
     }
   }
 
@@ -193,7 +190,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     apiToken = tokenInput ? tokenInput.value.trim() : apiToken;
     if(ip) {
       persistConfig({ targetIp: ip, apiToken });
-      stopLostInput();
       updateTargets(ip);
     }
   });
@@ -203,7 +199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!target) return;
 
     logTerminal(`PINGING ${target}...`);
-    pingBtn.innerText = 'PING…';
+    pingBtn.innerText = 'Transmitting...';
     
     const start = Date.now();
     try {
@@ -213,39 +209,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearTimeout(timeoutId);
       
       const latency = Date.now() - start;
-      pingBtn.innerText = 'PING';
+      pingBtn.innerText = 'Ping Node';
       logTerminal(`REPLY FROM ${target}: TIME=${latency}ms`);
     } catch (e) {
-      pingBtn.innerText = 'PING';
+      pingBtn.innerText = 'Ping Node';
       logTerminal(`REQUEST TIMED OUT FOR ${target}`);
     }
   });
 
   let flashState = false;
-  let flashBusy = false;
-  function renderFlashButton() {
-    flashBtn.textContent = flashBusy ? 'FLASH PENDING' : 'FLASH ' + (flashState ? 'ON' : 'OFF');
-    flashBtn.setAttribute('aria-pressed', String(flashState));
-    flashBtn.classList.toggle('active-state', flashState);
-    flashBtn.disabled = flashBusy;
-  }
   flashBtn.addEventListener('click', async () => {
-    if (!ipInput.value.trim() || flashBusy) return;
-    const requestedState = !flashState;
-    flashBusy = true;
-    renderFlashButton();
+    const target = ipInput.value.trim();
+    if (!target) return;
+
+    flashState = !flashState;
+    logTerminal(`TRANSMITTING FLASH OVERRIDE: ${flashState ? 'ON' : 'OFF'}...`);
+    
     try {
-      const res = await fetchRobot('/flash', { state: requestedState ? 1 : 0 }, {
-        signal: AbortSignal.timeout(2000), timeoutMs: 2000
-      });
-      if (!res.ok) throw new Error('Flash rejected: ' + res.status);
-      flashState = requestedState;
-      logTerminal('FRONT FLASH: ' + (flashState ? 'ON' : 'OFF'));
-    } catch (error) {
-      logTerminal('FRONT FLASH FAILED: ' + error.message);
-    } finally {
-      flashBusy = false;
-      renderFlashButton();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      await fetchRobot('/flash', { state: flashState ? 1 : 0 }, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      logTerminal(`FLASH COMMAND ACKNOWLEDGED.`);
+    } catch (e) {
+      logTerminal(`FLASH COMMAND FAILED.`);
     }
   });
 
@@ -266,10 +253,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       liveRequestController.abort();
       liveRequestController = null;
     }
-    liveFeedBtn.innerText = enabled ? 'STOP STREAM' : 'STREAM';
+    liveFeedBtn.innerText = enabled ? 'Stop Feed' : 'Live Feed';
     liveFeedBtn.classList.toggle('active-state', enabled);
     if(feedStatus) {
-      feedStatus.textContent = enabled ? 'STREAM ACTIVE' : 'FRAME IDLE';
+      feedStatus.textContent = enabled ? 'Live Feed Active' : 'Manual Capture';
       feedStatus.classList.toggle('blink', enabled);
     }
     if(enabled) requestCameraFrame();
@@ -315,7 +302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if(controller.signal.aborted) return;
       if(liveFeed) {
         if(!liveErrorLogged) {
-          logTerminal("CAM RX DROP | RETRY");
+          logTerminal("FPV FRAME DROPPED. RETRYING...");
           liveErrorLogged = true;
         }
         scheduleLiveFrame(500);
@@ -323,8 +310,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         camStream.classList.remove('has-frame');
         if(cameraPlaceholder) cameraPlaceholder.classList.remove('hidden');
         statusBlock.classList.add('offline');
-        targetIpText.innerText = 'LINK OFFLINE';
-        logTerminal("CAM RX FAIL");
+        targetIpText.innerText = `NODE: [OFFLINE]`;
+        logTerminal("ERROR: SENSOR FEED LOST.");
       }
     } finally {
       liveFrameInFlight = false;
@@ -343,7 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(cameraPlaceholder) cameraPlaceholder.classList.add('hidden');
     statusBlock.classList.remove('offline');
     const target = ipInput.value.trim();
-    if(target) targetIpText.innerText = `LINK ${target}`;
+    if(target) targetIpText.innerText = `NODE: [${target}]`;
     liveErrorLogged = false;
     scheduleLiveFrame(Math.max(0, liveFrameIntervalMs + 5 - (Date.now() - liveFrameStartedAt)));
   });
@@ -351,7 +338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   camStream.addEventListener('error', async () => {
     if(liveFeed) {
       if(!liveErrorLogged) {
-        logTerminal("CAM RX DROP | RETRY");
+        logTerminal("FPV FRAME DROPPED. RETRYING...");
         liveErrorLogged = true;
       }
       scheduleLiveFrame(350);
@@ -360,8 +347,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     camStream.classList.remove('has-frame');
     if(cameraPlaceholder) cameraPlaceholder.classList.remove('hidden');
     statusBlock.classList.add('offline');
-    targetIpText.innerText = 'LINK OFFLINE';
-    logTerminal("CAM RX FAIL");
+    targetIpText.innerText = `NODE: [OFFLINE]`;
+    logTerminal("ERROR: SENSOR FEED LOST.");
   });
 
   function normalizeImuData(data) {
@@ -401,7 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function formatImuHud(data) {
       if (!data.imu_ready) {
-        return data.mpu6050_addr ? 'MPU PRESENT | NO SAMPLE' : 'IMU TELEMETRY OFFLINE';
+        return data.mpu6050_addr ? 'MPU PRESENT | WAITING FOR SAMPLE' : 'IMU TELEMETRY OFFLINE';
       }
       const accel = data.accel_ready ? `ACCEL ${numberList(data.accel_g, 3)} G` : 'ACCEL OFF';
       const gyro = data.gyro_ready ? `GYRO ${numberList(data.gyro_dps, 1)} DPS` : 'GYRO OFF';
@@ -437,15 +424,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (reset) {
         await resetImuZero(fetchRobot);
         latestImu = null;
-        logTerminal('IMU ZERO RESET | RAW');
+        logTerminal('IMU ZERO CLEARED. RAW ORIENTATION RESTORED.');
       } else {
-        logTerminal('IMU ZERO | TORQUE OFF | HOLD STILL');
+        logTerminal('IMU ZERO: KEEP STILL WITH MOTORS OFF.');
         latestImu = normalizeImuData(await zeroImu(fetchRobot, data => {
           latestImu = normalizeImuData(data);
           renderImuZero(data);
           if (coordHud) coordHud.textContent = formatImuHud(latestImu);
         }));
-        logTerminal('IMU ZERO / GYRO BIAS | NVS ACK');
+        logTerminal('IMU ZERO AND GYRO BIAS SAVED ON ROBOT.');
       }
     } catch (error) {
       logTerminal(`IMU CALIBRATION: ${error.message}`);
@@ -478,15 +465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const res = await fetchRobot('/status', { fast: 1 });
           if (res.ok) {
               const data = await res.json();
-              if (typeof data.flash_enabled === 'boolean' && !flashBusy) {
-                flashState = data.flash_enabled;
-                renderFlashButton();
-              }
-              lastRobotStatus = data;
-              lastStatusAt = Date.now();
-              if (data.emergency_stop && !estopLatched) stopLostInput();
               estopLatched = Boolean(data.emergency_stop);
-              renderSession();
               const voltage = typeof data.solar_panel_voltage_v === 'number'
                 ? `${data.solar_panel_voltage_v.toFixed(2)} V`
                 : 'N/A';
@@ -543,9 +522,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if(!currentSettings.offsets) currentSettings.offsets = new Array(16).fill(0);
       if(!currentSettings.motorChannels) currentSettings.motorChannels = Array.from({ length: 16 }, (_, i) => i);
       renderCalibrationUI();
-      logTerminal("CALIB SYNC ACK");
+      logTerminal("CALIBRATION MATRIX SYNCED.");
     } catch(e) {
-      logTerminal("CALIB SYNC FAIL");
+      logTerminal("FAILED TO SYNC CALIBRATION.");
     }
   }
 
@@ -650,8 +629,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const target = ipInput.value.trim();
     if(!target) return;
 
-    logTerminal("NVS WRITE TX");
-    saveCalibBtn.innerText = 'WRITING…';
+    logTerminal("TRANSMITTING KINEMATICS TO NVS...");
+    saveCalibBtn.innerText = 'Saving...';
     
     const params = {};
     activeLegs.forEach(leg => {
@@ -667,52 +646,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const res = await fetchRobot('/settings/set', params, { method: 'POST' });
-      saveCalibBtn.innerText = 'WRITE NVS';
+      saveCalibBtn.innerText = 'Save to NVS';
       if(res.ok) {
-          logTerminal("NVS WRITE ACK");
+          logTerminal("NVS WRITE CONFIRMED.");
           loadCalibrationData(target);
       }
     } catch(e) {
-      saveCalibBtn.innerText = 'WRITE NVS';
-      logTerminal("NVS WRITE FAIL");
+      saveCalibBtn.innerText = 'Save to NVS';
+      logTerminal("NVS WRITE FAILED.");
     }
   });
 
   const torqueBtn = document.getElementById('btn-torque');
   let torqueState = false;
   let estopLatched = false;
-  let lastRobotStatus = null;
-  let lastStatusAt = 0;
-  function renderSession() {
-    const online = !statusBlock.classList.contains('offline');
-    const fresh = online && lastStatusAt && Date.now() - lastStatusAt < 5000;
-    robotReady = Boolean(fresh && lastRobotStatus.torque_enabled && !estopLatched);
-    if (!robotReady && activeDir !== 'IDLE') stopLostInput();
-    clearEstopBtn.hidden = !estopLatched;
-    for (const id of ['btn-torque', 'btn-calib-torque', 'btn-stand', 'btn-sit', 'btn-charge-rest', 'btn-wave', 'btn-wag', 'btn-dance', 'btn-stretch', 'btn-play-bow', 'btn-curious', 'btn-turtle']) {
-      const button = document.getElementById(id);
-      if (button) button.disabled = !fresh || estopLatched;
-    }
-    document.getElementById('robot-mode').textContent = !online ? 'OFFLINE' : !fresh ? 'NO TELEMETRY' : estopLatched ? 'E-STOP ACTIVE' : String(lastRobotStatus.mode || 'unknown').replaceAll('_', ' ').toUpperCase();
-    document.getElementById('motor-status').textContent = fresh ? (lastRobotStatus.torque_enabled ? 'ON' : 'OFF') : 'UNKNOWN';
-    document.getElementById('solar-status').textContent = fresh && typeof lastRobotStatus.solar_panel_voltage_v === 'number' ? lastRobotStatus.solar_panel_voltage_v.toFixed(2) + ' V' : '—';
-    document.getElementById('session-guidance').textContent = estopLatched ? 'E-STOP LATCHED' : !online ? 'LINK REQUIRED' : !fresh ? 'TELEMETRY STALE' : !operationsActive ? 'CALIB / DRIVE INHIBITED' : !lastRobotStatus.torque_enabled ? 'TORQUE OFF' : 'CLEAR';
-  }
-  setInterval(renderSession, 1000);
   function renderTorqueButton() {
-    const calibTorque = document.getElementById('btn-calib-torque');
-    if (calibTorque) calibTorque.innerText = torqueState ? 'DISABLE TORQUE' : 'ENABLE TORQUE';
     if(!torqueBtn) return;
-    torqueBtn.innerText = torqueState ? 'DISABLE TORQUE' : 'ENABLE TORQUE';
-    torqueBtn.classList.toggle('motors-on', torqueState);
-    torqueBtn.setAttribute('aria-pressed', String(torqueState));
+    torqueBtn.innerText = torqueState ? 'Disable Torque' : 'Enable Torque';
+    torqueBtn.style.color = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
+    torqueBtn.style.borderColor = torqueState ? 'var(--accent-amber)' : 'var(--text-main)';
+    torqueBtn.style.backgroundColor = torqueState ? 'transparent' : 'var(--accent-amber)';
   }
   renderTorqueButton();
   if(torqueBtn) {
     torqueBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
-      stopLostInput();
       const requestedState = !torqueState;
       try {
         const res = await fetchRobot('/torque', { state: requestedState ? 1 : 0 });
@@ -726,13 +685,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         logTerminal(`SERVO TORQUE: ${torqueState ? 'ENGAGED' : 'DISABLED'}`);
         renderTorqueButton();
       } catch(e) {
-        logTerminal("TORQUE TX FAIL");
+        logTerminal("SERVO TORQUE COMMAND FAILED.");
         renderTorqueButton();
       }
     });
   }
-
-  document.getElementById('btn-calib-torque')?.addEventListener('click', () => torqueBtn.click());
 
   const calibModeBtn = document.getElementById('btn-calib-mode');
   let inCalibMode = false;
@@ -742,24 +699,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       if(!target) return;
       inCalibMode = !inCalibMode;
       logTerminal(`CALIBRATION MODE: ${inCalibMode ? 'ON' : 'OFF'}`);
-      calibModeBtn.innerText = inCalibMode ? 'EXIT CALIB' : 'ENTER CALIB';
-      calibModeBtn.classList.toggle('active-state', inCalibMode);
-      calibModeBtn.setAttribute('aria-pressed', String(inCalibMode));
+      calibModeBtn.innerText = inCalibMode ? 'Disable Calib Mode' : 'Enable Calib Mode';
+      calibModeBtn.style.color = inCalibMode ? 'var(--bg-color)' : 'var(--accent-red)';
+      calibModeBtn.style.backgroundColor = inCalibMode ? 'var(--text-main)' : 'transparent';
+      calibModeBtn.style.borderColor = inCalibMode ? 'var(--text-main)' : 'var(--accent-red)';
       try { await fetchRobot('/calib', { state: inCalibMode ? 1 : 0 }); } catch(e) {}
     });
   }
 
-  const testSeqBtn = document.getElementById('btn-identify-legs');
+  const testSeqBtn = document.getElementById('btn-test-sequence');
   if(testSeqBtn) {
     testSeqBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
-      logTerminal("LEG ID TX");
+      logTerminal("STARTING LEG SET IDENTIFICATION...");
       try {
         await fetchRobot('/testseq');
-        logTerminal("LEG ID ACK");
+        logTerminal("LEG SET IDENTIFICATION STARTED.");
       } catch(e) {
-        logTerminal("LEG ID FAIL");
+        logTerminal("LEG SET IDENTIFICATION FAILED.");
       }
     });
   }
@@ -769,8 +727,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     chargeRestBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
-      stopLostInput();
-      logTerminal("PARK TX | TUCK / TORQUE OFF");
+      logTerminal("CHARGE REST: TUCKING LEGS THEN DISABLING TORQUE...");
       try {
         const res = await fetchRobot('/charge-rest');
         if(!res.ok) {
@@ -780,9 +737,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         torqueState = false;
         renderTorqueButton();
-        logTerminal("PARK ACK | TORQUE OFF AFTER SETTLE");
+        logTerminal("CHARGE REST STARTED. TORQUE WILL DISABLE AFTER SETTLE.");
       } catch(e) {
-        logTerminal("PARK TX FAIL");
+        logTerminal("CHARGE REST COMMAND FAILED.");
       }
     });
   }
@@ -802,7 +759,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const btn = document.getElementById(id);
       if(btn) {
           btn.addEventListener('click', () => {
-              stopLostInput();
               logTerminal(`EMOTE: ${mode.toUpperCase()}`);
               dispatchCmd({ mode: mode });
           });
@@ -814,7 +770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnCapture.addEventListener('click', () => {
           const target = ipInput.value.trim();
           if(!target) return;
-          logTerminal("CAM CAPTURE TX");
+          logTerminal("CAPTURING SENSOR FRAME...");
           requestCameraFrame();
       });
   }
@@ -824,7 +780,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const target = ipInput.value.trim();
           if(!target) return;
           setLiveFeedState(!liveFeed);
-          logTerminal(liveFeed ? "STREAM START" : "STREAM STOP");
+          logTerminal(liveFeed ? "FPV LIVE FEED STARTED." : "FPV LIVE FEED STOPPED.");
       });
   }
 
@@ -838,48 +794,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   let activeDir = 'IDLE';
   let inputSuspended = false;
   let gamepadNeedsNeutral = false;
-  let operationsActive = true;
-  const controllerModeBtn = document.getElementById('input-controller');
-  const backupModeBtn = document.getElementById('input-backup');
-  // Older embedded surfaces without the input picker retain their keyboard controls.
-  let inputMode = controllerModeBtn ? 'controller' : 'backup';
-  let robotReady = !controllerModeBtn;
-  const controllerStatus = document.getElementById('controller-status');
-  const controllerName = document.getElementById('controller-name');
-  const controllerDot = document.getElementById('controller-dot');
-  function renderController(gp = null) {
-    if (!controllerStatus) return;
-    const label = !gp ? 'PAD NOT DETECTED' : estopLatched ? 'E-STOP ACTIVE' :
-      inputMode !== 'controller' ? 'PAD / BYPASS' : !operationsActive ? 'CALIB / INHIBITED' :
-      inputSuspended ? 'FOCUS LOST / INHIBITED' : !robotReady ? 'PAD / ROBOT INHIBITED' : gamepadNeedsNeutral ? 'NEUTRAL RESET REQUIRED' : 'PAD READY';
-    if (controllerStatus.textContent !== label) controllerStatus.textContent = label;
-    const name = gp ? gp.id : 'USB / BLUETOOTH';
-    if (controllerName.textContent !== name) controllerName.textContent = name;
-    controllerDot.className = 'controller-dot' + (gp ? (gamepadNeedsNeutral || inputSuspended || estopLatched || !robotReady ? ' waiting' : ' ready') : '');
-  }
-  function selectInput(mode) {
-    stopLostInput();
-    inputMode = mode;
-    controllerModeBtn?.classList[mode === 'controller' ? 'add' : 'remove']('active');
-    backupModeBtn?.classList[mode === 'backup' ? 'add' : 'remove']('active');
-    controllerModeBtn?.setAttribute('aria-pressed', String(mode === 'controller'));
-    backupModeBtn?.setAttribute('aria-pressed', String(mode === 'backup'));
-    const controllerControls = document.getElementById('controller-controls');
-    const backupControls = document.getElementById('backup-controls');
-    if (controllerControls) controllerControls.hidden = mode !== 'controller';
-    if (backupControls) backupControls.hidden = mode !== 'backup';
-  }
-  controllerModeBtn?.addEventListener('click', () => selectInput('controller'));
-  backupModeBtn?.addEventListener('click', () => selectInput('backup'));
-  document.getElementById('btn-stand')?.addEventListener('click', () => {
-    stopLostInput();
-    dispatchCmd({ mode: 'stand', vx: 0, vy: 0, wz: 0 });
-  });
 
   function stopLostInput() {
-    const wasMoving = activeDir !== 'IDLE';
+    const wasMoving = activeDir !== 'IDLE' || runningPath;
     Object.values(keys).forEach(el => el?.classList.remove('active'));
     activeDir = 'IDLE';
+    runningPath = false;
     gamepadNeedsNeutral = true;
     prevGamepadState = { vx: 0, wz: 0, buttons: [] };
     if (wasMoving) dispatchCmd({ mode: 'stand', vx: 0, vy: 0, wz: 0 });
@@ -901,18 +821,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     commandEpoch++;
     Object.values(keys).forEach(el => el?.classList.remove('active'));
     activeDir = 'IDLE';
+    runningPath = false;
     gamepadNeedsNeutral = true;
     prevGamepadState = { vx: 0, wz: 0, buttons: [] };
     torqueState = false;
     estopLatched = true;
     renderTorqueButton();
-    logTerminal("E-STOP TX");
+    logTerminal("EMERGENCY STOP TRANSMITTED.");
     try {
       const res = await fetchRobot('/estop');
       if (!res.ok) throw new Error(`E-stop rejected: ${res.status}`);
-      logTerminal("E-STOP ACK | TORQUE OFF");
+      logTerminal("E-STOP ACKNOWLEDGED. TORQUE DISABLED.");
     } catch(e) {
-      logTerminal("E-STOP TX FAIL");
+      logTerminal("E-STOP TRANSMISSION FAILED.");
     }
   }
 
@@ -924,7 +845,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearEstopBtn.addEventListener('click', async () => {
       const target = ipInput.value.trim();
       if(!target) return;
-      logTerminal("E-STOP RESET TX");
+      logTerminal("CLEARING E-STOP LATCH...");
       try {
         const res = await fetchRobot('/estop/clear');
         if(!res.ok) {
@@ -935,16 +856,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         estopLatched = false;
         torqueState = false;
         renderTorqueButton();
-        logTerminal("E-STOP RESET ACK | TORQUE OFF");
+        logTerminal("E-STOP LATCH CLEARED. TORQUE REMAINS DISABLED.");
       } catch(e) {
-        logTerminal("E-STOP RESET FAIL");
+        logTerminal("E-STOP CLEAR FAILED.");
       }
     });
   }
 
   function sendDirection(keyName) {
     const key = keyName.toLowerCase();
-    if(inputSuspended || estopLatched || !robotReady || !operationsActive || inputMode !== 'backup' || !keys[key] || activeDir === key.toUpperCase()) return;
+    if(inputSuspended || estopLatched || !keys[key] || activeDir === key.toUpperCase()) return;
     Object.values(keys).forEach(el => el.classList.remove('active'));
     keys[key].classList.add('active');
     activeDir = key.toUpperCase();
@@ -993,20 +914,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('keydown', (e) => {
     const activeEl = document.activeElement;
-    const editing = activeEl && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName);
+    if(activeEl && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName)) return;
     const k = e.key.toLowerCase();
     if (inputSuspended) return;
     // A held key must be pressed again after focus returns.
     if (e.repeat && keys[k] && !keys[k].classList.contains('active')) return;
 
-    if (e.key === 'Escape' || (e.key === ' ' && !editing)) {
+    if (e.key === 'Escape' || e.key === ' ') {
       e.preventDefault();
       triggerEmergencyStop();
       return;
     }
     
-    if (editing || !robotReady || !operationsActive || inputMode !== 'backup' || e.repeat) return;
-    if (keys[k]) e.preventDefault();
     // Quick keys for emotes
     if (k === 'f') dispatchCmd({ mode: 'flip' });
     if (k === 'e') dispatchCmd({ mode: 'dance' });
@@ -1021,7 +940,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase();
-    if(keys[k]?.classList.contains('active')) stopDirection(k);
+    if(keys[k]) stopDirection(k);
   });
 
   // --- GAMEPAD SUPPORT ---
@@ -1049,7 +968,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function pollGamepad() {
-    const available = Array.from(navigator.getGamepads?.() || [])
+    const available = Array.from(navigator.getGamepads())
       .map((pad, slot) => ({ pad, index: pad?.index ?? slot }))
       .filter(({ pad }) => pad && pad.connected !== false);
     const selected = available.find(({ index }) => index === activeGamepadIndex)
@@ -1067,24 +986,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       stopLostInput();
       gamepadConnected = true;
       activeGamepadIndex = selected.index;
-      logTerminal(`GAMEPAD ${gp.id} | NEUTRAL RESET REQUIRED`);
+      logTerminal(`GAMEPAD READY: ${gp.id}. Center sticks and release buttons to enable input.`);
     }
-    renderController(gp);
-    // The controller emergency trigger remains available in every workspace/input mode.
-    if (gp.buttons[7]?.pressed && !estopLatched) {
-      triggerEmergencyStop();
-      requestAnimationFrame(pollGamepad);
-      return;
-    }
-    if (inputSuspended || estopLatched || !robotReady || !operationsActive || inputMode !== 'controller') {
-      gamepadNeedsNeutral = true;
+    if (inputSuspended || estopLatched) {
       requestAnimationFrame(pollGamepad);
       return;
     }
     if (gp) {
       const db = 0.15;
       let vx = 0, wz = 0;
-      if (Math.abs(gp.axes[1]) > db) vx = Math.sign(gp.axes[1]);
+      if (Math.abs(gp.axes[1]) > db) vx = gp.axes[1];
       if (Math.abs(gp.axes[2]) > db) wz = -Math.sign(gp.axes[2]);
       else if (Math.abs(gp.axes[0]) > db) wz = -Math.sign(gp.axes[0]);
 
@@ -1112,7 +1023,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const justPressed = (idx) => btnState[idx] && !prevGamepadState.buttons[idx];
-      if ([0, 1, 2, 3, 4, 5].some(justPressed)) stopLostInput();
       if (justPressed(0)) dispatchCmd({ mode: 'sit' });
       if (justPressed(1)) dispatchCmd({ mode: 'stand' });
       if (justPressed(2)) dispatchCmd({ mode: 'wave' });
@@ -1148,7 +1058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetIdleTimer() {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
-          if(robotReady && activeDir === 'IDLE' && !inCalibMode) {
+          if(activeDir === 'IDLE' && !inCalibMode) {
               dispatchCmd({ mode: 'idle' });
           }
       }, 3000);
@@ -1157,7 +1067,102 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('click', resetIdleTimer);
   resetIdleTimer();
 
-  renderSession();
+  // --- PATH PLANNER LOGIC ---
+  const pathDurSlider = document.getElementById('path-duration-slider');
+  const pathDurVal = document.getElementById('val-path-duration');
+  if(pathDurSlider) pathDurSlider.addEventListener('input', e => pathDurVal.innerText = e.target.value);
 
+  const pathQueue = [];
+  const qContainer = document.getElementById('path-queue-container');
+
+  function renderPathQueue() {
+      if(!qContainer) return;
+      qContainer.innerHTML = '';
+      if(pathQueue.length === 0) {
+          qContainer.innerHTML = '<div class="queue-empty">Queue empty</div>';
+          return;
+      }
+      pathQueue.forEach((item, index) => {
+          const row = document.createElement('div');
+          row.className = 'queue-item';
+          row.innerHTML = `<span>${index+1}. ${item.action}</span><span>${item.duration} ms</span>`;
+          qContainer.appendChild(row);
+      });
+  }
+
+  document.querySelectorAll('.path-add-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+          const action = e.target.getAttribute('data-action');
+          const dur = parseInt(pathDurSlider ? pathDurSlider.value : 1500);
+          pathQueue.push({ action, duration: dur });
+          renderPathQueue();
+      });
+  });
+
+  const btnPathClear = document.getElementById('btn-path-clear');
+  if(btnPathClear) btnPathClear.addEventListener('click', () => { pathQueue.length = 0; renderPathQueue(); });
+
+  let runningPath = false;
+  const btnPathRun = document.getElementById('btn-path-run');
+  const btnPathStop = document.getElementById('btn-path-stop');
+
+  if(btnPathRun) {
+      btnPathRun.addEventListener('click', async () => {
+          if(runningPath || pathQueue.length === 0) return;
+          runningPath = true;
+          logTerminal("INITIATING AUTONOMOUS PATH SEQUENCE LOOP...");
+          btnPathRun.innerText = "Running...";
+
+          while(runningPath) {
+              for(let i = 0; i < pathQueue.length; i++) {
+                  if(!runningPath) break;
+                  const item = pathQueue[i];
+                  logTerminal(`PATH EXEC: ${item.action} for ${item.duration}ms`);
+                  
+                  if(item.action === 'F') {
+                      dispatchCmd({ mode: 'flip' });
+                      await new Promise(r => setTimeout(r, item.duration)); 
+                  } else if (item.action === 'E') {
+                      dispatchCmd({ mode: 'dance' });
+                      await new Promise(r => setTimeout(r, item.duration)); 
+                  } else if (item.action === 'V') {
+                      dispatchCmd({ mode: 'wave' });
+                      await new Promise(r => setTimeout(r, item.duration));
+                  } else if (item.action === 'WAIT') {
+                      dispatchCmd({ mode: 'stand' });
+                      await new Promise(r => setTimeout(r, item.duration));
+                  } else {
+                      let vx = 0, wz = 0;
+                      if(item.action === 'W') vx = 1;
+                      if(item.action === 'S') vx = -1;
+                      if(item.action === 'A') wz = 1;
+                      if(item.action === 'D') wz = -1;
+                      const paceVal = parseInt(sliderPace ? sliderPace.value : 150);
+                      const speed = 150.0 / paceVal; 
+                      dispatchCmd({ mode: 'walk', vx, vy: 0, wz, speed: speed.toFixed(2) });
+                      
+                          // Heartbeat loop while waiting
+                          const start = Date.now();
+                          while(Date.now() - start < item.duration && runningPath) {
+                              const target = ipInput.value.trim();
+                          if(target) fetchRobot('/ping').catch(()=>{});
+                          await new Promise(r => setTimeout(r, 500));
+                      }
+                  }
+              }
+          }
+          dispatchCmd({ mode: 'stand' });
+          btnPathRun.innerText = "Execute Loop";
+          logTerminal("PATH SEQUENCE HALTED.");
+      });
+  }
+
+  if(btnPathStop) {
+      btnPathStop.addEventListener('click', () => {
+          runningPath = false;
+          dispatchCmd({ mode: 'stand' });
+      });
+  }
+  renderPathQueue();
 
 });

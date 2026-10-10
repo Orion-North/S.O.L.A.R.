@@ -6,6 +6,9 @@ control-panel/.vite/
 control-panel/node_modules/.vite/
 
 firmware/**/secrets.h
+firmware/**/*.ino.cpp
+# Local firmware images can embed Wi-Fi and OTA credentials.
+/SOLAR-*.bin
 
 *.log
 *.tmp

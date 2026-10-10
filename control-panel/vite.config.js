@@ -7,7 +7,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        tablet: resolve(__dirname, 'tablet.html'),
       },
     },
   },

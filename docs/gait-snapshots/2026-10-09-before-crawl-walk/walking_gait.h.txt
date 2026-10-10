@@ -1,0 +1,39 @@
+#pragma once
+#include <math.h>
+#include <utility>
+
+inline std::pair<float, float> walkingLegTarget(float phase, float travel, float liftAmplitude) {
+  constexpr float pi = 3.14159265359f;
+  constexpr float swingFraction = 0.40f;
+  phase -= floorf(phase);
+  if (phase < swingFraction) {
+    float progress = phase / swingFraction;
+    float height = sinf(pi * progress);
+    // Zero lift velocity at touchdown/liftoff, with unchanged peak clearance.
+    return {-travel * cosf(pi * progress), liftAmplitude * height * height};
+  }
+  float progress = (phase - swingFraction) / (1 - swingFraction);
+  return {travel * cosf(pi * progress), 0};
+}
+
+inline bool walkingGaitMathValid() {
+  for (int sample = 0; sample <= 1000; ++sample) {
+    float phase = sample / 1000.0f;
+    auto first = walkingLegTarget(phase, 30, 30);
+    auto second = walkingLegTarget(phase + 0.5f, 30, 30);
+    if (!isfinite(first.first) || !isfinite(first.second) || fabsf(first.first) > 30.001f ||
+        first.second < 0 || first.second > 30.001f || (first.second > 0.001f && second.second > 0.001f)) return false;
+    auto reverse = walkingLegTarget(phase, -30, 30);
+    if (fabsf(first.first + reverse.first) > 0.001f) return false;
+  }
+  auto beginning = walkingLegTarget(0, 30, 30);
+  auto peak = walkingLegTarget(0.2f, 30, 30);
+  auto landing = walkingLegTarget(0.4f, 30, 30);
+  auto before = walkingLegTarget(0.39999f, 30, 30);
+  auto after = walkingLegTarget(0.40001f, 30, 30);
+  auto cycleEnd = walkingLegTarget(0.99999f, 30, 30);
+  return fabsf(beginning.first + 30) < 0.001f && beginning.second == 0 &&
+      fabsf(peak.second - 30) < 0.001f && fabsf(landing.first - 30) < 0.001f && landing.second == 0 &&
+      fabsf(before.first - after.first) < 0.001f && before.second < 0.001f &&
+      fabsf(cycleEnd.first - beginning.first) < 0.001f;
+}
